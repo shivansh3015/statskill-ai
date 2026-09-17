@@ -3,6 +3,7 @@ import hashlib
 import secrets
 import json
 import os
+import shutil
 import sqlite3
 from datetime import datetime
 from pathlib import Path
@@ -24,13 +25,47 @@ from ai.adaptive_engine import get_next_question_strategy
 
 BACKEND_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = BACKEND_DIR.parent
-DATABASE_PATH = BACKEND_DIR / "statmentor.db"
-UPLOAD_DIR = BACKEND_DIR / "uploads"
-
-DATABASE_PATH.parent.mkdir(parents=True, exist_ok=True)
-UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 load_dotenv(PROJECT_ROOT / ".env")
+
+SEED_DATABASE_PATH = BACKEND_DIR / "statmentor.db"
+
+DATABASE_PATH = Path(
+    os.getenv(
+        "DATABASE_PATH",
+        str(SEED_DATABASE_PATH),
+    )
+)
+
+UPLOAD_DIR = Path(
+    os.getenv(
+        "UPLOAD_DIR",
+        str(BACKEND_DIR / "uploads"),
+    )
+)
+
+DATABASE_PATH.parent.mkdir(
+    parents=True,
+    exist_ok=True,
+)
+
+UPLOAD_DIR.mkdir(
+    parents=True,
+    exist_ok=True,
+)
+
+# Railway volumes start empty. On the first deployment that uses
+# DATABASE_PATH=/data/statmentor.db, copy the bundled database into
+# the persistent volume. Future deployments keep the volume database.
+if (
+    DATABASE_PATH != SEED_DATABASE_PATH
+    and not DATABASE_PATH.exists()
+    and SEED_DATABASE_PATH.exists()
+):
+    shutil.copy2(
+        SEED_DATABASE_PATH,
+        DATABASE_PATH,
+    )
 
 
 # ============================================================
@@ -448,9 +483,7 @@ class CourseQuizSubmit(BaseModel):
 # ============================================================
 
 def hash_password(password: str) -> str:
-    password = password.strip()
-
-    if len(password) < 6:
+    if len(password) < 6 or not password.strip():
         raise HTTPException(
             status_code=400,
             detail="Password must contain at least 6 characters.",
