@@ -1,168 +1,127 @@
-const API_BASE_URL = (
-  process.env.NEXT_PUBLIC_API_URL ??
-  'http://127.0.0.1:8000'
-).replace(/\/+$/, '');
+import { getCurrentUserId } from '@/lib/auth';
 
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL ||
+  'http://127.0.0.1:8000';
+
+const USER_SCOPED_PATHS = [
+  '/dashboard/',
+  '/competencies/',
+  '/skill-gaps/',
+  '/recommendations/',
+  '/competency-history/',
+  '/users/',
+  '/ai/assessment/',
+];
+
+function applyLoggedInUserToEndpoint(
+  endpoint: string
+): string {
+  const currentUserId =
+    getCurrentUserId();
+
+  if (!currentUserId) {
+    return endpoint;
+  }
+
+  let nextEndpoint = endpoint;
+
+  for (const prefix of USER_SCOPED_PATHS) {
+    const escapedPrefix =
+      prefix.replace(
+        /[.*+?^${}()|[\]\\]/g,
+        '\\$&'
+      );
+
+    const pattern =
+      new RegExp(
+        `^${escapedPrefix}1(?=/|$|\\?)`
+      );
+
+    nextEndpoint =
+      nextEndpoint.replace(
+        pattern,
+        `${prefix}${currentUserId}`
+      );
+  }
+
+  nextEndpoint =
+    nextEndpoint.replace(
+      /([?&]user_id=)1(?=&|$)/g,
+      `$1${currentUserId}`
+    );
+
+  return nextEndpoint;
+}
+
+function applyLoggedInUserToBody(
+  body: unknown
+): unknown {
+  const currentUserId =
+    getCurrentUserId();
+
+  if (
+    !currentUserId ||
+    !body ||
+    typeof body !== 'object' ||
+    Array.isArray(body)
+  ) {
+    return body;
+  }
+
+  const record =
+    body as Record<string, unknown>;
+
+  if (
+    Object.prototype.hasOwnProperty.call(
+      record,
+      'user_id'
+    )
+  ) {
+    return {
+      ...record,
+      user_id: currentUserId,
+    };
+  }
+
+  return body;
+}
 
 async function request<T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const normalizedEndpoint =
-    endpoint.startsWith('/')
-      ? endpoint
-      : `/${endpoint}`;
-
-  const url =
-    `${API_BASE_URL}${normalizedEndpoint}`;
-
-  try {
-    const response = await fetch(
-      url,
-      {
-        ...options,
-
-        headers: {
-          Accept:
-            'application/json',
-
-          'Content-Type':
-            'application/json',
-
-          ...(options.headers ?? {}),
-        },
-
-        cache:
-          'no-store',
-      }
+  const resolvedEndpoint =
+    applyLoggedInUserToEndpoint(
+      endpoint
     );
 
+  const response = await fetch(
+    `${API_BASE_URL}${resolvedEndpoint}`,
+    {
+      ...options,
+      headers: {
+        'Content-Type':
+          'application/json',
+        ...(options.headers || {}),
+      },
+    }
+  );
 
-    const responseText =
+  if (!response.ok) {
+    const errorText =
       await response.text();
 
-
-    if (!response.ok) {
-      let errorMessage =
-        responseText ||
-        response.statusText ||
-        'Request failed';
-
-
-      /*
-       * FastAPI normally returns errors as:
-       *
-       * {
-       *   "detail": "Error message"
-       * }
-       */
-      if (responseText) {
-        try {
-          const parsedError =
-            JSON.parse(
-              responseText
-            ) as {
-              detail?:
-                string |
-                unknown;
-              message?:
-                string;
-            };
-
-
-          if (
-            typeof parsedError.detail ===
-            'string'
-          ) {
-            errorMessage =
-              parsedError.detail;
-          } else if (
-            typeof parsedError.message ===
-            'string'
-          ) {
-            errorMessage =
-              parsedError.message;
-          }
-
-        } catch {
-          /*
-           * Keep the original response text
-           * when the server did not return JSON.
-           */
-        }
-      }
-
-
-      throw new Error(
-        `API Error ${response.status}: ${errorMessage}`
-      );
-    }
-
-
-    /*
-     * Some successful API endpoints may return
-     * an empty body.
-     */
-    if (!responseText) {
-      return undefined as T;
-    }
-
-
-    try {
-      return JSON.parse(
-        responseText
-      ) as T;
-
-    } catch {
-      throw new Error(
-        `Invalid JSON response from ${url}`
-      );
-    }
-
-  } catch (error) {
-    /*
-     * Preserve API errors created above.
-     */
-    if (
-      error instanceof Error &&
-      error.message.startsWith(
-        'API Error'
-      )
-    ) {
-      throw error;
-    }
-
-
-    if (
-      error instanceof Error &&
-      error.message.startsWith(
-        'Invalid JSON'
-      )
-    ) {
-      throw error;
-    }
-
-
-    console.error(
-      'API request failed:',
-      {
-        url,
-        method:
-          options.method ??
-          'GET',
-        error,
-      }
-    );
-
-
     throw new Error(
-      error instanceof Error
-        ? `Unable to connect to backend: ${error.message}`
-        : 'Unable to connect to backend.'
+      `API Error ${response.status}: ${
+        errorText ||
+        response.statusText
+      }`
     );
   }
-}
 
+  return response.json();
+}
 
 export async function apiGet<T>(
   endpoint: string
@@ -170,67 +129,60 @@ export async function apiGet<T>(
   return request<T>(
     endpoint,
     {
-      method:
-        'GET',
+      method: 'GET',
     }
   );
 }
-
 
 export async function apiPost<T>(
   endpoint: string,
   body?: unknown
 ): Promise<T> {
+  const resolvedBody =
+    body !== undefined
+      ? applyLoggedInUserToBody(
+          body
+        )
+      : undefined;
+
   return request<T>(
     endpoint,
     {
-      method:
-        'POST',
-
+      method: 'POST',
       body:
-        body !== undefined
+        resolvedBody !== undefined
           ? JSON.stringify(
-              body
+              resolvedBody
             )
           : undefined,
     }
   );
 }
-
 
 export async function apiPut<T>(
   endpoint: string,
   body?: unknown
 ): Promise<T> {
+  const resolvedBody =
+    body !== undefined
+      ? applyLoggedInUserToBody(
+          body
+        )
+      : undefined;
+
   return request<T>(
     endpoint,
     {
-      method:
-        'PUT',
-
+      method: 'PUT',
       body:
-        body !== undefined
+        resolvedBody !== undefined
           ? JSON.stringify(
-              body
+              resolvedBody
             )
           : undefined,
     }
   );
 }
-
-
-export async function apiDelete<T>(
-  endpoint: string
-): Promise<T> {
-  return request<T>(
-    endpoint,
-    {
-      method:
-        'DELETE',
-    }
-  );
-}
-
 
 export {
   API_BASE_URL,

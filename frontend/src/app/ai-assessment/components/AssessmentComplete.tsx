@@ -1,12 +1,13 @@
 'use client';
 
-import {
+import React, {
   useEffect,
   useMemo,
   useState,
 } from 'react';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 
 import {
   AlertTriangle,
@@ -27,6 +28,7 @@ import {
 } from 'lucide-react';
 
 import { apiGet } from '@/lib/api';
+import { getCurrentUserId } from '@/lib/auth';
 
 import type {
   AssessmentSession,
@@ -36,7 +38,9 @@ import type {
 
 interface AssessmentCompleteProps {
   session: AssessmentSession;
+
   questions: QuestionData[];
+
   onRestart: () => void;
 }
 
@@ -103,10 +107,6 @@ interface AssessmentResultResponse {
   skill_gaps: SkillGap[];
 
   recommendations: Recommendation[];
-
-  assessment_type?: string;
-
-  source_course_id?: number | null;
 }
 
 
@@ -126,8 +126,6 @@ interface ImprovementHistory {
 
   source: string;
 
-  source_course_id?: number | null;
-
   created_at: string;
 }
 
@@ -137,92 +135,55 @@ interface DashboardResponse {
 }
 
 
-const USER_ID = 1;
-
-
 function getScoreStyle(
   score: number
 ) {
+
   if (score >= 85) {
     return {
-      text:
-        'text-amber-400',
-
-      bg:
-        'bg-amber-900/30',
-
-      border:
-        'border-amber-700/40',
-
-      label:
-        'Expert Performance',
+      text: 'text-amber-400',
+      bg: 'bg-amber-900/30',
+      border: 'border-amber-700/40',
+      label: 'Expert Performance',
     };
   }
 
 
   if (score >= 70) {
     return {
-      text:
-        'text-purple-400',
-
-      bg:
-        'bg-purple-900/30',
-
-      border:
-        'border-purple-700/40',
-
-      label:
-        'Strong Performance',
+      text: 'text-purple-400',
+      bg: 'bg-purple-900/30',
+      border: 'border-purple-700/40',
+      label: 'Strong Performance',
     };
   }
 
 
   if (score >= 55) {
     return {
-      text:
-        'text-blue-400',
-
-      bg:
-        'bg-blue-900/30',
-
-      border:
-        'border-blue-700/40',
-
-      label:
-        'Intermediate Performance',
+      text: 'text-blue-400',
+      bg: 'bg-blue-900/30',
+      border: 'border-blue-700/40',
+      label: 'Intermediate Performance',
     };
   }
 
 
   if (score >= 40) {
     return {
-      text:
-        'text-emerald-400',
-
-      bg:
-        'bg-emerald-900/30',
-
-      border:
-        'border-emerald-700/40',
-
-      label:
-        'Foundation Performance',
+      text: 'text-emerald-400',
+      bg: 'bg-emerald-900/30',
+      border: 'border-emerald-700/40',
+      label: 'Foundation Performance',
     };
   }
 
 
   return {
-    text:
-      'text-red-400',
-
-    bg:
-      'bg-red-900/30',
-
-    border:
-      'border-red-700/40',
-
-    label:
-      'Development Priority',
+    text: 'text-red-400',
+    bg: 'bg-red-900/30',
+    border: 'border-red-700/40',
+    label: 'Development Priority',
   };
 }
 
@@ -230,6 +191,7 @@ function getScoreStyle(
 function levelColor(
   level: string
 ) {
+
   const colors:
     Record<string, string> = {
 
@@ -257,49 +219,18 @@ function levelColor(
 }
 
 
-function toTimestamp(
-  value: string
-) {
-  if (!value) {
-    return 0;
-  }
-
-
-  const normalized =
-    value.includes('T')
-      ? value
-      : value.replace(
-          ' ',
-          'T'
-        );
-
-
-  const parsed =
-    Date.parse(
-      normalized
-    );
-
-
-  return Number.isNaN(
-    parsed
-  )
-    ? 0
-    : parsed;
-}
-
-
 export default function AssessmentComplete({
   session,
   onRestart,
 }: AssessmentCompleteProps) {
 
+  const router = useRouter();
+
   const [
     result,
     setResult,
   ] =
-    useState<
-      AssessmentResultResponse | null
-    >(
+    useState<AssessmentResultResponse | null>(
       null
     );
 
@@ -308,9 +239,7 @@ export default function AssessmentComplete({
     improvementHistory,
     setImprovementHistory,
   ] =
-    useState<
-      ImprovementHistory[]
-    >(
+    useState<ImprovementHistory[]>(
       []
     );
 
@@ -319,109 +248,101 @@ export default function AssessmentComplete({
     loading,
     setLoading,
   ] =
-    useState(
-      true
-    );
+    useState(true);
 
 
   const [
     error,
     setError,
   ] =
-    useState(
-      ''
-    );
+    useState('');
 
 
-  useEffect(
-    () => {
+  useEffect(() => {
 
-      async function loadResults() {
+    async function loadResults() {
 
-        setLoading(
-          true
-        );
-
-        setError(
-          ''
-        );
+      const userId =
+        getCurrentUserId();
 
 
-        try {
+      if (!userId) {
 
-          const [
-            assessmentResult,
-            dashboard,
-          ] =
-            await Promise.all(
-              [
+        router.replace('/');
 
-                apiGet<
-                  AssessmentResultResponse
-                >(
-                  `/ai/assessment/${USER_ID}/result`
-                ),
-
-                apiGet<
-                  DashboardResponse
-                >(
-                  `/dashboard/${USER_ID}/full`
-                ),
-
-              ]
-            );
-
-
-          setResult(
-            assessmentResult
-          );
-
-
-          setImprovementHistory(
-            dashboard.improvement_history ||
-            []
-          );
-
-        } catch (err) {
-
-          console.error(
-            'Assessment result error:',
-            err
-          );
-
-
-          setError(
-            err instanceof Error
-              ? err.message
-              : 'Unable to load assessment results.'
-          );
-
-        } finally {
-
-          setLoading(
-            false
-          );
-
-        }
+        return;
 
       }
 
 
-      loadResults();
+      setLoading(true);
 
-    },
-    []
-  );
+      setError('');
+
+
+      try {
+
+        const [
+          assessmentResult,
+          dashboard,
+        ] =
+          await Promise.all([
+
+            apiGet<AssessmentResultResponse>(
+              `/ai/assessment/${userId}/result`
+            ),
+
+            apiGet<DashboardResponse>(
+              `/dashboard/${userId}/full`
+            ),
+
+          ]);
+
+
+        setResult(
+          assessmentResult
+        );
+
+
+        setImprovementHistory(
+          dashboard.improvement_history ||
+          []
+        );
+
+      } catch (err) {
+
+        console.error(
+          'Assessment result error:',
+          err
+        );
+
+
+        setError(
+          err instanceof Error
+            ? err.message
+            : 'Unable to load assessment results.'
+        );
+
+      } finally {
+
+        setLoading(false);
+
+      }
+
+    }
+
+
+    loadResults();
+
+  }, [router]);
 
 
   const selectedSkills =
-    result?.selected_skills ||
-    [];
+    result?.selected_skills || [];
 
 
   const answers =
-    result?.answers ||
-    [];
+    result?.answers || [];
 
 
   const selectedCompetencies =
@@ -434,31 +355,21 @@ export default function AssessmentComplete({
 
 
         if (
-          result.selected_skills
-            .length === 0
+          result.selected_skills.length === 0
         ) {
-          return (
-            result.competencies
-          );
+          return result.competencies;
         }
 
 
-        return (
-          result.competencies.filter(
-            (
-              competency
-            ) =>
-              result.selected_skills
-                .includes(
-                  competency.skill_name
-                )
-          )
+        return result.competencies.filter(
+          (competency) =>
+            result.selected_skills.includes(
+              competency.skill_name
+            )
         );
 
       },
-      [
-        result,
-      ]
+      [result]
     );
 
 
@@ -471,32 +382,15 @@ export default function AssessmentComplete({
         }
 
 
-        if (
-          result.selected_skills
-            .length === 0
-        ) {
-          return (
-            result.skill_gaps
-          );
-        }
-
-
-        return (
-          result.skill_gaps.filter(
-            (
-              gap
-            ) =>
-              result.selected_skills
-                .includes(
-                  gap.skill_name
-                )
-          )
+        return result.skill_gaps.filter(
+          (gap) =>
+            result.selected_skills.includes(
+              gap.skill_name
+            )
         );
 
       },
-      [
-        result,
-      ]
+      [result]
     );
 
 
@@ -509,48 +403,21 @@ export default function AssessmentComplete({
         }
 
 
-        if (
-          result.selected_skills
-            .length === 0
-        ) {
-          return (
-            result.recommendations
-          );
-        }
-
-
-        return (
-          result.recommendations.filter(
-            (
-              course
-            ) =>
-              result.selected_skills
-                .includes(
-                  course.skill_gap
-                )
-          )
+        return result.recommendations.filter(
+          (course) =>
+            result.selected_skills.includes(
+              course.skill_gap
+            )
         );
 
       },
-      [
-        result,
-      ]
+      [result]
     );
 
 
   const selectedImprovements =
     useMemo(
       () => {
-
-        if (!result) {
-          return [];
-        }
-
-
-        const expectedSource =
-          result.assessment_type ||
-          'AI Assessment';
-
 
         const latestBySkill =
           new Map<
@@ -559,52 +426,18 @@ export default function AssessmentComplete({
           >();
 
 
-        const sortedHistory =
-          [
-            ...improvementHistory,
-          ].sort(
-            (
-              a,
-              b
-            ) =>
-              toTimestamp(
-                b.created_at
-              ) -
-              toTimestamp(
-                a.created_at
-              )
-          );
-
-
-        sortedHistory.forEach(
-          (
-            item
-          ) => {
-
-            const sourceMatches =
-              item.source ===
-                expectedSource ||
-
-              (
-                expectedSource ===
-                  'AI Assessment' &&
-
-                item.source ===
-                  'AI Adaptive Assessment'
-              );
-
+        improvementHistory.forEach(
+          (item) => {
 
             if (
-              !sourceMatches
+              item.source !==
+              'AI Assessment'
             ) {
               return;
             }
 
 
             if (
-              selectedSkills.length >
-                0 &&
-
               !selectedSkills.includes(
                 item.skill_name
               )
@@ -635,14 +468,13 @@ export default function AssessmentComplete({
       },
       [
         improvementHistory,
-        result,
         selectedSkills,
       ]
     );
 
 
   const assessmentScore =
-    answers.length > 0
+    answers.length
       ? Math.round(
           answers.reduce(
             (
@@ -660,21 +492,18 @@ export default function AssessmentComplete({
 
   const correctAnswers =
     answers.filter(
-      (
-        answer
-      ) =>
+      (answer) =>
         answer.is_correct
     ).length;
 
 
   const accuracy =
-    answers.length > 0
+    answers.length
       ? Math.round(
           (
             correctAnswers /
             answers.length
-          ) *
-            100
+          ) * 100
         )
       : 0;
 
@@ -685,9 +514,8 @@ export default function AssessmentComplete({
     );
 
 
-  if (
-    loading
-  ) {
+  if (loading) {
+
     return (
 
       <div className="max-w-4xl mx-auto">
@@ -695,25 +523,16 @@ export default function AssessmentComplete({
         <div className="card-base p-12 text-center">
 
           <Loader2
-            size={
-              34
-            }
+            size={34}
             className="animate-spin text-primary mx-auto"
           />
 
-
           <h2 className="text-lg font-bold text-foreground mt-4">
-
             Preparing your competency report...
-
           </h2>
 
-
           <p className="text-sm text-muted-foreground mt-2">
-
-            StatSkill AI is loading your updated scores,
-            gaps and recommendations.
-
+            StatSkill AI is loading your updated scores, gaps and recommendations.
           </p>
 
         </div>
@@ -727,6 +546,7 @@ export default function AssessmentComplete({
     error ||
     !result
   ) {
+
     return (
 
       <div className="max-w-3xl mx-auto">
@@ -734,27 +554,17 @@ export default function AssessmentComplete({
         <div className="card-base p-8 text-center">
 
           <AlertTriangle
-            size={
-              34
-            }
+            size={34}
             className="text-warning mx-auto"
           />
 
-
           <h2 className="text-lg font-bold text-foreground mt-4">
-
             Assessment completed
-
           </h2>
 
-
           <p className="text-sm text-danger mt-2">
-
-            {
-              error ||
-              'Unable to load the detailed result.'
-            }
-
+            {error ||
+              'Unable to load the detailed result.'}
           </p>
 
 
@@ -767,9 +577,7 @@ export default function AssessmentComplete({
               }
               className="px-5 py-2.5 rounded-xl bg-muted text-sm font-semibold text-foreground"
             >
-
               Start New Assessment
-
             </button>
 
 
@@ -777,9 +585,7 @@ export default function AssessmentComplete({
               href="/dashboard"
               className="px-5 py-2.5 rounded-xl bg-primary text-white text-sm font-semibold"
             >
-
               Dashboard
-
             </Link>
 
           </div>
@@ -795,24 +601,18 @@ export default function AssessmentComplete({
 
     <div className="max-w-5xl mx-auto space-y-6">
 
-
-      {/* ====================================================
-          COMPLETION HERO
-      ==================================================== */}
+      {/* Completion hero */}
 
       <div className="card-base p-6 bg-gradient-to-br from-blue-900/40 to-cyan-900/20 border-blue-700/40">
 
         <div className="flex items-start justify-between gap-6 flex-wrap">
-
 
           <div className="flex items-start gap-4">
 
             <div className="w-14 h-14 rounded-2xl bg-success/15 border border-success/30 flex items-center justify-center shrink-0">
 
               <Trophy
-                size={
-                  28
-                }
+                size={28}
                 className="text-success"
               />
 
@@ -824,21 +624,12 @@ export default function AssessmentComplete({
               <div className="flex items-center gap-2 flex-wrap">
 
                 <h1 className="text-xl font-bold text-foreground">
-
-                  {
-                    result.assessment_type ===
-                    'Post-Course Reassessment'
-                      ? 'Post-Course Reassessment Complete'
-                      : 'AI Assessment Complete'
-                  }
-
+                  AI Assessment Complete
                 </h1>
 
 
                 <span className="badge-success">
-
                   Completed
-
                 </span>
 
               </div>
@@ -846,46 +637,29 @@ export default function AssessmentComplete({
 
               <p className="text-sm text-muted-foreground mt-1">
 
-                Session #
-                {
-                  result.session_id
-                }
+                Session #{result.session_id}
 
                 {' • '}
 
-                {
-                  result.question_count
-                }{' '}
-
-                adaptive questions
+                {result.question_count} adaptive questions
 
               </p>
 
 
               <div className="flex flex-wrap gap-2 mt-3">
 
-                {
-                  selectedSkills.map(
-                    (
-                      skill
-                    ) => (
+                {selectedSkills.map(
+                  (skill) => (
 
-                      <span
-                        key={
-                          skill
-                        }
-                        className="badge-info"
-                      >
+                    <span
+                      key={skill}
+                      className="badge-info"
+                    >
+                      {skill}
+                    </span>
 
-                        {
-                          skill
-                        }
-
-                      </span>
-
-                    )
                   )
-                }
+                )}
 
               </div>
 
@@ -895,37 +669,21 @@ export default function AssessmentComplete({
 
 
           <div
-            className={
-              `rounded-xl border px-6 py-4 text-center ${scoreStyle.bg} ${scoreStyle.border}`
-            }
+            className={`rounded-xl border px-6 py-4 text-center ${scoreStyle.bg} ${scoreStyle.border}`}
           >
 
             <p className="text-xs text-muted-foreground">
-
               Assessment Score
-
             </p>
-
 
             <p
-              className={
-                `text-4xl font-bold tabular-nums mt-1 ${scoreStyle.text}`
-              }
+              className={`text-4xl font-bold tabular-nums mt-1 ${scoreStyle.text}`}
             >
-
-              {
-                assessmentScore
-              }
-
+              {assessmentScore}
             </p>
 
-
             <p className="text-xs font-semibold text-foreground mt-1">
-
-              {
-                scoreStyle.label
-              }
-
+              {scoreStyle.label}
             </p>
 
           </div>
@@ -935,36 +693,23 @@ export default function AssessmentComplete({
       </div>
 
 
-      {/* ====================================================
-          SUMMARY METRICS
-      ==================================================== */}
+      {/* Summary metrics */}
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-
 
         <div className="card-base p-4">
 
           <CheckCircle2
-            size={
-              18
-            }
+            size={18}
             className="text-success mb-3"
           />
 
-
           <p className="text-2xl font-bold text-foreground">
-
-            {
-              correctAnswers
-            }
-
+            {correctAnswers}
           </p>
 
-
           <p className="text-xs text-muted-foreground mt-1">
-
             Correct Answers
-
           </p>
 
         </div>
@@ -973,26 +718,16 @@ export default function AssessmentComplete({
         <div className="card-base p-4">
 
           <Target
-            size={
-              18
-            }
+            size={18}
             className="text-primary mb-3"
           />
 
-
           <p className="text-2xl font-bold text-foreground">
-
-            {
-              accuracy
-            }%
-
+            {accuracy}%
           </p>
 
-
           <p className="text-xs text-muted-foreground mt-1">
-
             Accuracy
-
           </p>
 
         </div>
@@ -1001,26 +736,16 @@ export default function AssessmentComplete({
         <div className="card-base p-4">
 
           <Brain
-            size={
-              18
-            }
+            size={18}
             className="text-purple-400 mb-3"
           />
 
-
           <p className="text-2xl font-bold text-foreground">
-
-            {
-              selectedCompetencies.length
-            }
-
+            {selectedCompetencies.length}
           </p>
 
-
           <p className="text-xs text-muted-foreground mt-1">
-
             Skills Evaluated
-
           </p>
 
         </div>
@@ -1029,26 +754,16 @@ export default function AssessmentComplete({
         <div className="card-base p-4">
 
           <AlertTriangle
-            size={
-              18
-            }
+            size={18}
             className="text-warning mb-3"
           />
 
-
           <p className="text-2xl font-bold text-foreground">
-
-            {
-              selectedGaps.length
-            }
-
+            {selectedGaps.length}
           </p>
 
-
           <p className="text-xs text-muted-foreground mt-1">
-
             Skill Gaps
-
           </p>
 
         </div>
@@ -1056,23 +771,18 @@ export default function AssessmentComplete({
       </div>
 
 
-      {/* ====================================================
-          UPDATED COMPETENCY SCORES
-      ==================================================== */}
+      {/* Updated competencies */}
 
       <div className="card-base p-5">
 
         <div className="flex items-center justify-between gap-3 mb-5 flex-wrap">
-
 
           <div>
 
             <h2 className="text-sm font-semibold text-foreground flex items-center gap-2">
 
               <BarChart2
-                size={
-                  16
-                }
+                size={16}
                 className="text-primary"
               />
 
@@ -1080,141 +790,94 @@ export default function AssessmentComplete({
 
             </h2>
 
-
             <p className="text-xs text-muted-foreground mt-1">
-
-              Scores saved to your competency profile
-              after this assessment.
-
+              Scores saved to your competency profile after this assessment.
             </p>
 
           </div>
 
 
           <span className="badge-info">
-
             Live Database
-
           </span>
 
         </div>
 
 
-        {
-          selectedCompetencies.length ===
-          0
-            ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
-              <p className="text-sm text-muted-foreground">
+          {selectedCompetencies.map(
+            (competency) => (
 
-                No competency scores are available.
-
-              </p>
-
-            )
-            : (
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-
-                {
-                  selectedCompetencies.map(
-                    (
-                      competency
-                    ) => (
-
-                      <div
-                        key={
-                          competency.skill_name
-                        }
-                        className="p-4 rounded-xl bg-muted border border-border"
-                      >
-
-
-                        <div className="flex items-center justify-between gap-3">
-
-                          <div>
-
-                            <p className="text-sm font-semibold text-foreground">
-
-                              {
-                                competency.skill_name
-                              }
-
-                            </p>
-
-
-                            <p
-                              className={
-                                `text-xs font-semibold mt-1 ${levelColor(
-                                  competency.level
-                                )}`
-                              }
-                            >
-
-                              {
-                                competency.level
-                              }
-
-                            </p>
-
-                          </div>
-
-
-                          <span className="text-2xl font-bold text-foreground tabular-nums">
-
-                            {
-                              competency.score
-                            }
-
-                          </span>
-
-                        </div>
-
-
-                        <div className="w-full h-2 bg-navy-600 rounded-full overflow-hidden mt-3">
-
-                          <div
-                            className="h-full rounded-full bg-primary"
-                            style={{
-                              width:
-                                `${Math.max(
-                                  0,
-                                  Math.min(
-                                    100,
-                                    competency.score
-                                  )
-                                )}%`,
-                            }}
-                          />
-
-                        </div>
-
-                      </div>
-
-                    )
-                  )
+              <div
+                key={
+                  competency.skill_name
                 }
+                className="p-4 rounded-xl bg-muted border border-border"
+              >
+
+                <div className="flex items-center justify-between gap-3">
+
+                  <div>
+
+                    <p className="text-sm font-semibold text-foreground">
+                      {competency.skill_name}
+                    </p>
+
+                    <p
+                      className={`text-xs font-semibold mt-1 ${levelColor(
+                        competency.level
+                      )}`}
+                    >
+                      {competency.level}
+                    </p>
+
+                  </div>
+
+
+                  <span className="text-2xl font-bold text-foreground tabular-nums">
+                    {competency.score}
+                  </span>
+
+                </div>
+
+
+                <div className="w-full h-2 bg-navy-600 rounded-full overflow-hidden mt-3">
+
+                  <div
+                    className="h-full rounded-full bg-primary"
+                    style={{
+                      width:
+                        `${Math.max(
+                          0,
+                          Math.min(
+                            100,
+                            competency.score
+                          )
+                        )}%`,
+                    }}
+                  />
+
+                </div>
 
               </div>
 
             )
-        }
+          )}
+
+        </div>
 
       </div>
 
 
-      {/* ====================================================
-          BEFORE VS AFTER
-      ==================================================== */}
+      {/* Improvement */}
 
       <div className="card-base p-5">
 
         <h2 className="text-sm font-semibold text-foreground flex items-center gap-2 mb-4">
 
           <TrendingUp
-            size={
-              16
-            }
+            size={16}
             className="text-success"
           />
 
@@ -1223,215 +886,133 @@ export default function AssessmentComplete({
         </h2>
 
 
-        {
-          selectedImprovements.length ===
-          0
-            ? (
+        {selectedImprovements.length === 0 ? (
 
-              <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-muted-foreground">
+            No improvement history is available for this assessment yet.
+          </p>
 
-                No improvement history is available
-                for this assessment yet.
+        ) : (
 
-              </p>
+          <div className="space-y-3">
 
-            )
-            : (
+            {selectedImprovements.map(
+              (item) => (
 
-              <div className="space-y-3">
+                <div
+                  key={item.id}
+                  className="p-4 rounded-xl bg-muted border border-border flex items-center justify-between gap-4 flex-wrap"
+                >
 
-                {
-                  selectedImprovements.map(
-                    (
-                      item
-                    ) => (
+                  <div>
 
-                      <div
-                        key={
-                          item.id
-                        }
-                        className="p-4 rounded-xl bg-muted border border-border flex items-center justify-between gap-4 flex-wrap"
-                      >
+                    <p className="text-sm font-semibold text-foreground">
+                      {item.skill_name}
+                    </p>
 
+                    <p className="text-xs text-muted-foreground mt-1">
 
-                        <div>
+                      {item.previous_level}
 
-                          <p className="text-sm font-semibold text-foreground">
+                      {' → '}
 
-                            {
-                              item.skill_name
-                            }
+                      {item.new_level}
 
-                          </p>
+                    </p>
 
+                  </div>
 
-                          <p className="text-xs text-muted-foreground mt-1">
 
-                            {
-                              item.previous_level
-                            }
+                  <div className="flex items-center gap-4">
 
-                            {' → '}
+                    <div className="text-center">
 
-                            {
-                              item.new_level
-                            }
+                      <p className="text-2xs text-muted-foreground">
+                        Before
+                      </p>
 
-                          </p>
+                      <p className="text-lg font-bold text-foreground">
+                        {item.previous_score}
+                      </p>
 
+                    </div>
 
-                          <p className="text-xs text-muted-foreground mt-1">
 
-                            {
-                              item.source
-                            }
+                    <ArrowRight
+                      size={16}
+                      className="text-muted-foreground"
+                    />
 
-                          </p>
 
-                        </div>
+                    <div className="text-center">
 
+                      <p className="text-2xs text-muted-foreground">
+                        After
+                      </p>
 
-                        <div className="flex items-center gap-4">
+                      <p className="text-lg font-bold text-primary">
+                        {item.new_score}
+                      </p>
 
+                    </div>
 
-                          <div className="text-center">
 
-                            <p className="text-xs text-muted-foreground">
+                    <div
+                      className={`flex items-center gap-1 px-2.5 py-1 rounded-lg ${
+                        item.improvement >= 0
+                          ? 'bg-emerald-900/30 text-success'
+                          : 'bg-red-900/30 text-danger'
+                      }`}
+                    >
 
-                              Before
+                      {item.improvement >= 0 ? (
 
-                            </p>
+                        <TrendingUp
+                          size={13}
+                        />
 
+                      ) : (
 
-                            <p className="text-lg font-bold text-foreground">
+                        <TrendingDown
+                          size={13}
+                        />
 
-                              {
-                                item.previous_score
-                              }
+                      )}
 
-                            </p>
+                      <span className="text-xs font-bold">
 
-                          </div>
+                        {item.improvement >= 0
+                          ? '+'
+                          : ''}
 
+                        {item.improvement}
 
-                          <ArrowRight
-                            size={
-                              16
-                            }
-                            className="text-muted-foreground"
-                          />
+                      </span>
 
+                    </div>
 
-                          <div className="text-center">
+                  </div>
 
-                            <p className="text-xs text-muted-foreground">
+                </div>
 
-                              After
+              )
+            )}
 
-                            </p>
+          </div>
 
-
-                            <p className="text-lg font-bold text-primary">
-
-                              {
-                                item.new_score
-                              }
-
-                            </p>
-
-                          </div>
-
-
-                          <div
-                            className={
-                              `flex items-center gap-1 px-2.5 py-1 rounded-lg ${
-                                item.improvement >
-                                0
-
-                                  ? 'bg-emerald-900/30 text-success'
-
-                                  : item.improvement <
-                                    0
-
-                                    ? 'bg-red-900/30 text-danger'
-
-                                    : 'bg-muted text-muted-foreground'
-                              }`
-                            }
-                          >
-
-                            {
-                              item.improvement >
-                              0
-                                ? (
-
-                                  <TrendingUp
-                                    size={
-                                      13
-                                    }
-                                  />
-
-                                )
-                                : item.improvement <
-                                  0
-                                  ? (
-
-                                    <TrendingDown
-                                      size={
-                                        13
-                                      }
-                                    />
-
-                                  )
-                                  : null
-                            }
-
-
-                            <span className="text-xs font-bold">
-
-                              {
-                                item.improvement >
-                                0
-                                  ? '+'
-                                  : ''
-                              }
-
-                              {
-                                item.improvement
-                              }
-
-                            </span>
-
-                          </div>
-
-                        </div>
-
-                      </div>
-
-                    )
-                  )
-                }
-
-              </div>
-
-            )
-        }
+        )}
 
       </div>
 
 
-      {/* ====================================================
-          SKILL GAP ANALYSIS
-      ==================================================== */}
+      {/* Skill gaps */}
 
       <div className="card-base p-5">
 
         <h2 className="text-sm font-semibold text-foreground flex items-center gap-2 mb-4">
 
           <AlertTriangle
-            size={
-              16
-            }
+            size={16}
             className="text-warning"
           />
 
@@ -1440,158 +1021,114 @@ export default function AssessmentComplete({
         </h2>
 
 
-        {
-          selectedGaps.length ===
-          0
-            ? (
+        {selectedGaps.length === 0 ? (
 
-              <div className="p-4 rounded-xl bg-emerald-950/30 border border-emerald-800/30 flex items-center gap-3">
+          <div className="p-4 rounded-xl bg-emerald-950/30 border border-emerald-800/30 flex items-center gap-3">
 
-                <Award
-                  size={
-                    20
-                  }
-                  className="text-success"
-                />
+            <Award
+              size={20}
+              className="text-success"
+            />
+
+            <div>
+
+              <p className="text-sm font-semibold text-success">
+                No major gaps detected
+              </p>
+
+              <p className="text-xs text-muted-foreground mt-0.5">
+                All assessed skills reached the current competency threshold.
+              </p>
+
+            </div>
+
+          </div>
+
+        ) : (
+
+          <div className="space-y-3">
+
+            {selectedGaps.map(
+              (gap) => (
+
+                <div
+                  key={gap.skill_name}
+                  className="p-4 rounded-xl bg-red-950/20 border border-red-800/30 flex items-center justify-between gap-4 flex-wrap"
+                >
+
+                  <div>
+
+                    <p className="text-sm font-semibold text-foreground">
+                      {gap.skill_name}
+                    </p>
+
+                    <p className="text-xs text-muted-foreground mt-1">
+
+                      Current level:{' '}
+
+                      <span
+                        className={
+                          levelColor(
+                            gap.level
+                          )
+                        }
+                      >
+                        {gap.level}
+                      </span>
+
+                    </p>
+
+                  </div>
 
 
-                <div>
+                  <div className="flex items-center gap-4">
 
-                  <p className="text-sm font-semibold text-success">
+                    <div className="text-right">
 
-                    No major gaps detected
+                      <p className="text-xs text-muted-foreground">
+                        Current Score
+                      </p>
 
-                  </p>
+                      <p className="text-lg font-bold text-danger">
+                        {gap.score}/100
+                      </p>
+
+                    </div>
 
 
-                  <p className="text-xs text-muted-foreground mt-0.5">
+                    <span className="badge-warning">
 
-                    All assessed skills reached the current
-                    competency threshold.
+                      {gap.priority ||
+                        'Priority'}
 
-                  </p>
+                    </span>
+
+                  </div>
 
                 </div>
 
-              </div>
+              )
+            )}
 
-            )
-            : (
+          </div>
 
-              <div className="space-y-3">
-
-                {
-                  selectedGaps.map(
-                    (
-                      gap
-                    ) => (
-
-                      <div
-                        key={
-                          gap.skill_name
-                        }
-                        className="p-4 rounded-xl bg-red-950/20 border border-red-800/30 flex items-center justify-between gap-4 flex-wrap"
-                      >
-
-
-                        <div>
-
-                          <p className="text-sm font-semibold text-foreground">
-
-                            {
-                              gap.skill_name
-                            }
-
-                          </p>
-
-
-                          <p className="text-xs text-muted-foreground mt-1">
-
-                            Current level:{' '}
-
-                            <span
-                              className={
-                                levelColor(
-                                  gap.level
-                                )
-                              }
-                            >
-
-                              {
-                                gap.level
-                              }
-
-                            </span>
-
-                          </p>
-
-                        </div>
-
-
-                        <div className="flex items-center gap-4">
-
-                          <div className="text-right">
-
-                            <p className="text-xs text-muted-foreground">
-
-                              Current Score
-
-                            </p>
-
-
-                            <p className="text-lg font-bold text-danger">
-
-                              {
-                                gap.score
-                              }/100
-
-                            </p>
-
-                          </div>
-
-
-                          <span className="badge-warning">
-
-                            {
-                              gap.priority ||
-                              'Priority'
-                            }
-
-                          </span>
-
-                        </div>
-
-                      </div>
-
-                    )
-                  )
-                }
-
-              </div>
-
-            )
-        }
+        )}
 
       </div>
 
 
-      {/* ====================================================
-          RECOMMENDED LEARNING
-      ==================================================== */}
+      {/* Recommendations */}
 
       <div className="card-base p-5">
 
         <div className="flex items-center justify-between gap-3 mb-4">
-
 
           <div>
 
             <h2 className="text-sm font-semibold text-foreground flex items-center gap-2">
 
               <BookOpen
-                size={
-                  16
-                }
+                size={16}
                 className="text-accent"
               />
 
@@ -1599,270 +1136,178 @@ export default function AssessmentComplete({
 
             </h2>
 
-
             <p className="text-xs text-muted-foreground mt-1">
-
-              Courses mapped to the skill gaps
-              identified in this assessment.
-
+              Courses mapped to the skill gaps identified in this assessment.
             </p>
 
           </div>
 
 
           <Zap
-            size={
-              18
-            }
+            size={18}
             className="text-warning"
           />
 
         </div>
 
 
-        {
-          selectedRecommendations.length ===
-          0
-            ? (
+        {selectedRecommendations.length === 0 ? (
 
-              <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-muted-foreground">
+            No course recommendation is currently mapped to the assessed skill gaps.
+          </p>
 
-                No course recommendation is currently
-                mapped to the assessed skill gaps.
+        ) : (
 
-              </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
-            )
-            : (
+            {selectedRecommendations
+              .slice(0, 4)
+              .map(
+                (course) => (
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div
+                    key={
+                      course.course_id
+                    }
+                    className="p-4 rounded-xl bg-muted border border-border"
+                  >
 
-                {
-                  selectedRecommendations
-                    .slice(
-                      0,
-                      4
-                    )
-                    .map(
-                      (
-                        course
-                      ) => (
+                    <div className="flex items-start justify-between gap-3">
 
-                        <div
-                          key={
-                            course.course_id
-                          }
-                          className="p-4 rounded-xl bg-muted border border-border"
-                        >
+                      <div>
 
+                        <p className="text-sm font-semibold text-foreground">
+                          {course.course_name}
+                        </p>
 
-                          <div className="flex items-start justify-between gap-3">
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {course.category}
+                        </p>
 
-                            <div>
-
-                              <p className="text-sm font-semibold text-foreground">
-
-                                {
-                                  course.course_name
-                                }
-
-                              </p>
+                      </div>
 
 
-                              <p className="text-xs text-muted-foreground mt-1">
+                      <span className="badge-warning">
+                        {course.priority}
+                      </span>
 
-                                {
-                                  course.category
-                                }
-
-                              </p>
-
-                            </div>
+                    </div>
 
 
-                            <span className="badge-warning">
+                    <div className="mt-3 pt-3 border-t border-border">
 
-                              {
-                                course.priority
-                              }
+                      <p className="text-xs text-muted-foreground">
 
-                            </span>
+                        Targets:{' '}
 
-                          </div>
+                        <span className="font-semibold text-primary">
+                          {course.skill_gap}
+                        </span>
 
-
-                          <div className="mt-3 pt-3 border-t border-border">
-
-                            <p className="text-xs text-muted-foreground">
-
-                              Targets:{' '}
-
-                              <span className="font-semibold text-primary">
-
-                                {
-                                  course.skill_gap
-                                }
-
-                              </span>
-
-                            </p>
+                      </p>
 
 
-                            <p className="text-xs text-muted-foreground mt-1">
+                      <p className="text-xs text-muted-foreground mt-1">
 
-                              Current score:{' '}
+                        Current score:{' '}
 
-                              <span className="font-semibold text-foreground">
+                        <span className="font-semibold text-foreground">
+                          {course.current_score}
+                        </span>
 
-                                {
-                                  course.current_score
-                                }
+                      </p>
 
-                              </span>
+                    </div>
 
-                            </p>
+                  </div>
 
-                          </div>
+                )
+              )}
 
-                        </div>
+          </div>
 
-                      )
-                    )
-                }
-
-              </div>
-
-            )
-        }
+        )}
 
       </div>
 
 
-      {/* ====================================================
-          QUESTION PERFORMANCE
-      ==================================================== */}
+      {/* Question performance */}
 
       <div className="card-base p-5">
 
         <h2 className="text-sm font-semibold text-foreground mb-4">
-
           Question Performance
-
         </h2>
 
 
-        {
-          answers.length ===
-          0
-            ? (
+        <div className="space-y-2">
 
-              <p className="text-sm text-muted-foreground">
+          {answers.map(
+            (answer) => (
 
-                No question results are available.
-
-              </p>
-
-            )
-            : (
-
-              <div className="space-y-2">
-
-                {
-                  answers.map(
-                    (
-                      answer
-                    ) => (
-
-                      <div
-                        key={
-                          answer.sequence_number
-                        }
-                        className="flex items-center gap-3 p-3 rounded-lg bg-muted border border-border"
-                      >
-
-                        {
-                          answer.is_correct
-                            ? (
-
-                              <CheckCircle2
-                                size={
-                                  17
-                                }
-                                className="text-success shrink-0"
-                              />
-
-                            )
-                            : (
-
-                              <XCircle
-                                size={
-                                  17
-                                }
-                                className="text-danger shrink-0"
-                              />
-
-                            )
-                        }
-
-
-                        <div className="flex-1 min-w-0">
-
-                          <p className="text-xs font-semibold text-foreground">
-
-                            Question{' '}
-
-                            {
-                              answer.sequence_number
-                            }
-
-                            {' • '}
-
-                            {
-                              answer.skill_name
-                            }
-
-                          </p>
-
-
-                          <p className="text-xs text-muted-foreground mt-0.5">
-
-                            {
-                              answer.difficulty
-                            }
-
-                          </p>
-
-                        </div>
-
-
-                        <span className="text-sm font-bold text-foreground">
-
-                          {
-                            answer.score
-                          }/100
-
-                        </span>
-
-                      </div>
-
-                    )
-                  )
+              <div
+                key={
+                  answer.sequence_number
                 }
+                className="flex items-center gap-3 p-3 rounded-lg bg-muted border border-border"
+              >
+
+                {answer.is_correct ? (
+
+                  <CheckCircle2
+                    size={17}
+                    className="text-success shrink-0"
+                  />
+
+                ) : (
+
+                  <XCircle
+                    size={17}
+                    className="text-danger shrink-0"
+                  />
+
+                )}
+
+
+                <div className="flex-1 min-w-0">
+
+                  <p className="text-xs font-semibold text-foreground">
+
+                    Question{' '}
+
+                    {answer.sequence_number}
+
+                    {' • '}
+
+                    {answer.skill_name}
+
+                  </p>
+
+                  <p className="text-2xs text-muted-foreground mt-0.5">
+                    {answer.difficulty}
+                  </p>
+
+                </div>
+
+
+                <span className="text-sm font-bold text-foreground">
+                  {answer.score}/100
+                </span>
 
               </div>
 
             )
-        }
+          )}
+
+        </div>
 
       </div>
 
 
-      {/* ====================================================
-          ACTIONS
-      ==================================================== */}
+      {/* Actions */}
 
       <div className="flex items-center justify-between gap-4 flex-wrap pb-4">
-
 
         <button
           type="button"
@@ -1873,9 +1318,7 @@ export default function AssessmentComplete({
         >
 
           <RefreshCcw
-            size={
-              15
-            }
+            size={15}
           />
 
           Start New Assessment
@@ -1891,15 +1334,12 @@ export default function AssessmentComplete({
           View Updated Dashboard
 
           <ArrowRight
-            size={
-              15
-            }
+            size={15}
           />
 
         </Link>
 
       </div>
-
 
     </div>
   );

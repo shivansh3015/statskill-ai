@@ -1,287 +1,617 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useForm } from 'react-hook-form';
+import {
+  ArrowRight,
+  BrainCircuit,
+  BriefcaseBusiness,
+  Building2,
+  Eye,
+  EyeOff,
+  Loader2,
+  LockKeyhole,
+  Mail,
+  ShieldCheck,
+  User,
+} from 'lucide-react';
 import { toast } from 'sonner';
-import AppLogo from '@/components/ui/AppLogo';
-import { Eye, EyeOff, Lock, Mail, ArrowRight, Shield, Copy, Loader2,  } from 'lucide-react';
-import LoginBrandPanel from './LoginBrandPanel';
-import EmployeeProfileCard from './EmployeeProfileCard';
 
-interface LoginFormData {
-  email: string;
-  password: string;
-  rememberMe: boolean;
+import { apiPost } from '@/lib/api';
+import {
+  AuthUser,
+  setCurrentUser,
+} from '@/lib/auth';
+
+type AuthMode = 'login' | 'register';
+
+type AuthResponse = {
+  message: string;
+  user: AuthUser;
+};
+
+function getErrorMessage(error: unknown): string {
+  if (!(error instanceof Error)) {
+    return 'Something went wrong. Please try again.';
+  }
+
+  const raw = error.message || '';
+
+  const jsonStart = raw.indexOf('{');
+
+  if (jsonStart >= 0) {
+    try {
+      const parsed = JSON.parse(
+        raw.slice(jsonStart)
+      ) as {
+        detail?: string;
+      };
+
+      if (parsed.detail) {
+        return parsed.detail;
+      }
+    } catch {
+      // Fall back to the normal error message below.
+    }
+  }
+
+  return (
+    raw.replace(
+      /^API Error \d+:\s*/,
+      ''
+    ) ||
+    'Something went wrong. Please try again.'
+  );
 }
-
-// Mock credentials — backend auth will replace this at /api/auth/login
-const MOCK_USERS = [
-  {
-    email: 'shivansh.gupta@mospi.gov.in',
-    password: 'StatSkill@2026',
-    name: 'Shivansh Gupta',
-    employeeId: 'MOS-2024-0847',
-    role: 'Statistical Officer',
-    department: 'Official Statistics',
-    organization: 'Ministry of Statistics & PI',
-    grade: 'Group A — Level 10',
-    joinedDate: '12 Mar 2021',
-    lastAssessment: '08 Sep 2026',
-    overallScore: 72,
-    completedCourses: 8,
-    skillGaps: 3,
-    initials: 'SG',
-  },
-];
 
 export default function LoginPageClient() {
   const router = useRouter();
-  const [showPassword, setShowPassword] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [loggedInUser, setLoggedInUser] = useState<typeof MOCK_USERS[0] | null>(null);
-  const [redirecting, setRedirecting] = useState(false);
 
-  const {
-    register,
-    handleSubmit,
-    setValue,
-    formState: { errors },
-  } = useForm<LoginFormData>({
-    defaultValues: { email: '', password: '', rememberMe: false },
-  });
+  const [mode, setMode] =
+    useState<AuthMode>('login');
 
-  const onSubmit = async (data: LoginFormData) => {
-    setIsLoading(true);
-    // BACKEND INTEGRATION POINT: POST /api/auth/login with { email, password }
-    await new Promise((r) => setTimeout(r, 1400));
+  const [name, setName] =
+    useState('');
 
-    const user = MOCK_USERS.find(
-      (u) => u.email === data.email && u.password === data.password
-    );
+  const [email, setEmail] =
+    useState('');
 
-    if (!user) {
-      setIsLoading(false);
-      toast.error('Invalid credentials — use the demo accounts below to sign in');
+  const [password, setPassword] =
+    useState('');
+
+  const [
+    confirmPassword,
+    setConfirmPassword,
+  ] = useState('');
+
+  const [role, setRole] =
+    useState('');
+
+  const [department, setDepartment] =
+    useState('');
+
+  const [
+    showPassword,
+    setShowPassword,
+  ] = useState(false);
+
+  const [loading, setLoading] =
+    useState(false);
+
+  const [error, setError] =
+    useState('');
+
+  function switchMode(
+    nextMode: AuthMode
+  ) {
+    setMode(nextMode);
+    setError('');
+    setPassword('');
+    setConfirmPassword('');
+  }
+
+  async function handleSubmit(
+    event: FormEvent<HTMLFormElement>
+  ) {
+    event.preventDefault();
+
+    setError('');
+
+    const cleanEmail =
+      email.trim().toLowerCase();
+
+    if (!cleanEmail) {
+      setError(
+        'Please enter your email address.'
+      );
       return;
     }
 
-    setIsLoading(false);
-    setLoggedInUser(user);
-    toast.success(`Welcome back, ${user.name.split(' ')[0]}!`);
-  };
+    if (!password) {
+      setError(
+        'Please enter your password.'
+      );
+      return;
+    }
 
-  const handleContinueToDashboard = async () => {
-    setRedirecting(true);
-    await new Promise((r) => setTimeout(r, 600));
-    router.push('/dashboard');
-  };
+    if (
+      mode === 'register' &&
+      !name.trim()
+    ) {
+      setError(
+        'Please enter your full name.'
+      );
+      return;
+    }
 
-  const fillCredentials = (user: typeof MOCK_USERS[0]) => {
-    setValue('email', user.email);
-    setValue('password', user.password);
-    toast.success('Demo credentials filled — click Sign In');
-  };
+    if (
+      mode === 'register' &&
+      password.length < 6
+    ) {
+      setError(
+        'Password must contain at least 6 characters.'
+      );
+      return;
+    }
 
-  const copyToClipboard = (text: string, label: string) => {
-    navigator.clipboard.writeText(text);
-    toast.success(`${label} copied to clipboard`);
-  };
+    if (
+      mode === 'register' &&
+      password !== confirmPassword
+    ) {
+      setError(
+        'Passwords do not match.'
+      );
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const response =
+        mode === 'register'
+          ? await apiPost<AuthResponse>(
+              '/auth/register',
+              {
+                name: name.trim(),
+                email: cleanEmail,
+                password,
+                role:
+                  role.trim() ||
+                  'Employee',
+                department:
+                  department.trim() ||
+                  'General',
+              }
+            )
+          : await apiPost<AuthResponse>(
+              '/auth/login',
+              {
+                email: cleanEmail,
+                password,
+              }
+            );
+
+      setCurrentUser(response.user);
+
+      toast.success(
+        mode === 'register'
+          ? 'Account created successfully'
+          : 'Signed in successfully'
+      );
+
+      router.push('/dashboard');
+      router.refresh();
+    } catch (err) {
+      const message =
+        getErrorMessage(err);
+
+      setError(message);
+      toast.error(message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const isRegister =
+    mode === 'register';
 
   return (
-    <div className="min-h-screen flex bg-background">
-      {/* Left — Form */}
-      <div className="flex-1 flex flex-col justify-center px-8 sm:px-12 lg:px-16 xl:px-20 py-12 max-w-xl lg:max-w-lg xl:max-w-xl">
-        {/* Logo */}
-        <div className="mb-10">
-          <div className="flex items-center gap-3 mb-8">
-            <AppLogo size={40} />
-            <div>
-              <span className="text-xl font-bold text-foreground tracking-tight block">StatSkill AI</span>
-              <span className="text-xs text-muted-foreground">AI-Powered Competency Development</span>
-            </div>
-          </div>
+    <main className="min-h-screen bg-slate-950 text-white">
+      <div className="min-h-screen grid lg:grid-cols-[1.05fr_0.95fr]">
+        <section className="hidden lg:flex relative overflow-hidden border-r border-white/10">
+          <div className="absolute inset-0 bg-gradient-to-br from-indigo-950 via-slate-950 to-cyan-950" />
 
-          {!loggedInUser ? (
-            <>
-              <h2 className="text-2xl font-bold text-foreground mb-1">Sign in to your account</h2>
-              <p className="text-sm text-muted-foreground">
-                Access your competency dashboard and AI assessments.
+          <div className="absolute -top-24 -left-24 h-80 w-80 rounded-full bg-violet-500/20 blur-3xl" />
+
+          <div className="absolute bottom-0 right-0 h-96 w-96 rounded-full bg-cyan-500/10 blur-3xl" />
+
+          <div className="relative z-10 flex min-h-screen w-full flex-col justify-between p-12 xl:p-16">
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-indigo-400/30 bg-indigo-500/15">
+                <BrainCircuit className="h-6 w-6 text-indigo-300" />
+              </div>
+
+              <div>
+                <div className="text-xl font-bold tracking-tight">
+                  StatSkill AI
+                </div>
+
+                <div className="text-xs text-slate-400">
+                  Adaptive Competency Development
+                </div>
+              </div>
+            </div>
+
+            <div className="max-w-xl">
+              <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-slate-300">
+                <ShieldCheck className="h-4 w-4 text-emerald-400" />
+                Personalized learning journey
+              </div>
+
+              <h1 className="text-4xl font-bold leading-tight tracking-tight xl:text-5xl">
+                Measure skills.
+                <br />
+                Close gaps.
+                <br />
+                <span className="text-indigo-300">
+                  Prove improvement.
+                </span>
+              </h1>
+
+              <p className="mt-6 max-w-lg text-base leading-7 text-slate-300">
+                AI-powered adaptive assessments identify skill gaps, recommend targeted learning, and measure competency growth after training.
               </p>
-            </>
-          ) : (
-            <>
-              <h2 className="text-2xl font-bold text-foreground mb-1">Welcome back!</h2>
-              <p className="text-sm text-muted-foreground">
-                Your competency profile is ready. Continue to your dashboard.
-              </p>
-            </>
-          )}
-        </div>
 
-        {!loggedInUser ? (
-          /* ── Login Form ── */
-          <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-5">
-            {/* Email */}
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium text-foreground mb-1.5">
-                Official Email Address
-              </label>
-              <div className="relative">
-                <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                <input
-                  id="email"
-                  type="email"
-                  placeholder="name@department.gov.in"
-                  className={`input-field pl-10 ${errors.email ? 'border-danger focus:ring-danger' : ''}`}
-                  {...register('email', {
-                    required: 'Email address is required',
-                    pattern: { value: /\S+@\S+\.\S+/, message: 'Enter a valid email address' },
-                  })}
-                />
-              </div>
-              {errors.email && (
-                <p className="mt-1.5 text-xs text-danger flex items-center gap-1">
-                  <span>{errors.email.message}</span>
-                </p>
-              )}
-            </div>
+              <div className="mt-9 grid max-w-lg grid-cols-3 gap-3">
+                {[
+                  ['AI', 'Assessment'],
+                  ['Smart', 'Learning'],
+                  ['Measured', 'Growth'],
+                ].map(
+                  ([top, bottom]) => (
+                    <div
+                      key={top}
+                      className="rounded-2xl border border-white/10 bg-white/[0.04] p-4"
+                    >
+                      <div className="font-semibold text-white">
+                        {top}
+                      </div>
 
-            {/* Password */}
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label htmlFor="password" className="block text-sm font-medium text-foreground">
-                  Password
-                </label>
-                <button
-                  type="button"
-                  className="text-xs text-primary hover:text-blue-300 transition-colors font-medium"
-                >
-                  Forgot password?
-                </button>
-              </div>
-              <div className="relative">
-                <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                <input
-                  id="password"
-                  type={showPassword ? 'text' : 'password'}
-                  placeholder="Enter your password"
-                  className={`input-field pl-10 pr-10 ${errors.password ? 'border-danger focus:ring-danger' : ''}`}
-                  {...register('password', {
-                    required: 'Password is required',
-                    minLength: { value: 6, message: 'Password must be at least 6 characters' },
-                  })}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((v) => !v)}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                  aria-label={showPassword ? 'Hide password' : 'Show password'}
-                >
-                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
-              </div>
-              {errors.password && (
-                <p className="mt-1.5 text-xs text-danger">{errors.password.message}</p>
-              )}
-            </div>
-
-            {/* Remember me */}
-            <div className="flex items-center gap-2.5">
-              <input
-                id="rememberMe"
-                type="checkbox"
-                className="w-4 h-4 rounded border-border bg-muted accent-primary cursor-pointer"
-                {...register('rememberMe')}
-              />
-              <label htmlFor="rememberMe" className="text-sm text-muted-foreground cursor-pointer">
-                Keep me signed in for 30 days
-              </label>
-            </div>
-
-            {/* Submit */}
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="w-full flex items-center justify-center gap-2 bg-primary hover:opacity-90 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-lg transition-all duration-150"
-            >
-              {isLoading ? (
-                <>
-                  <Loader2 size={16} className="animate-spin" />
-                  Authenticating…
-                </>
-              ) : (
-                <>
-                  Sign In to StatSkill AI
-                  <ArrowRight size={16} />
-                </>
-              )}
-            </button>
-
-            {/* Security note */}
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Shield size={12} className="text-success shrink-0" />
-              <span>Secured by government-grade TLS encryption. Your data is protected.</span>
-            </div>
-          </form>
-        ) : (
-          /* ── Employee Profile Card (post-login) ── */
-          <EmployeeProfileCard
-            user={loggedInUser}
-            onContinue={handleContinueToDashboard}
-            redirecting={redirecting}
-          />
-        )}
-
-        {/* Demo Credentials Box */}
-        {!loggedInUser && (
-          <div className="mt-8 p-4 rounded-xl bg-navy-700 border border-border">
-            <p className="text-xs font-semibold text-muted-foreground mb-3 uppercase tracking-wider">
-              Demo Credentials
-            </p>
-            <div className="space-y-2">
-              {MOCK_USERS.map((u) => (
-                <div
-                  key={`demo-${u.employeeId}`}
-                  className="flex items-center gap-2 flex-wrap"
-                >
-                  <div className="flex-1 min-w-0 space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-2xs text-muted-foreground w-16 shrink-0">Email</span>
-                      <span className="text-xs text-foreground font-mono-data truncate">{u.email}</span>
-                      <button
-                        onClick={() => copyToClipboard(u.email, 'Email')}
-                        className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
-                      >
-                        <Copy size={11} />
-                      </button>
+                      <div className="mt-1 text-xs text-slate-400">
+                        {bottom}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-2xs text-muted-foreground w-16 shrink-0">Password</span>
-                      <span className="text-xs text-foreground font-mono-data">{u.password}</span>
-                      <button
-                        onClick={() => copyToClipboard(u.password, 'Password')}
-                        className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
-                      >
-                        <Copy size={11} />
-                      </button>
+                  )
+                )}
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-500">
+              StatSkill AI · Competency Development Platform
+            </p>
+          </div>
+        </section>
+
+        <section className="flex min-h-screen items-center justify-center px-5 py-10 sm:px-8">
+          <div className="w-full max-w-md">
+            <div className="mb-8 flex items-center gap-3 lg:hidden">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-500/15">
+                <BrainCircuit className="h-5 w-5 text-indigo-300" />
+              </div>
+
+              <div>
+                <div className="font-bold">
+                  StatSkill AI
+                </div>
+                <div className="text-xs text-slate-500">
+                  Adaptive Competency Development
+                </div>
+              </div>
+            </div>
+
+            <div className="mb-7">
+              <h2 className="text-3xl font-bold tracking-tight">
+                {isRegister
+                  ? 'Create your account'
+                  : 'Welcome back'}
+              </h2>
+
+              <p className="mt-2 text-sm leading-6 text-slate-400">
+                {isRegister
+                  ? 'Create your personal StatSkill AI account and start building your competency profile.'
+                  : 'Sign in to continue your learning and competency journey.'}
+              </p>
+            </div>
+
+            <div className="mb-7 grid grid-cols-2 rounded-xl border border-white/10 bg-white/[0.03] p-1">
+              <button
+                type="button"
+                onClick={() =>
+                  switchMode('login')
+                }
+                className={`rounded-lg px-4 py-2.5 text-sm font-semibold transition ${
+                  mode === 'login'
+                    ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-950/30'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                Sign In
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  switchMode('register')
+                }
+                className={`rounded-lg px-4 py-2.5 text-sm font-semibold transition ${
+                  mode === 'register'
+                    ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-950/30'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                Create Account
+              </button>
+            </div>
+
+            <form
+              onSubmit={handleSubmit}
+              className="space-y-4"
+            >
+              {isRegister && (
+                <div>
+                  <label
+                    htmlFor="name"
+                    className="mb-2 block text-sm font-medium text-slate-300"
+                  >
+                    Full Name
+                  </label>
+
+                  <div className="relative">
+                    <User className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+
+                    <input
+                      id="name"
+                      type="text"
+                      value={name}
+                      onChange={(event) =>
+                        setName(
+                          event.target.value
+                        )
+                      }
+                      autoComplete="name"
+                      placeholder="Enter your full name"
+                      className="h-12 w-full rounded-xl border border-white/10 bg-white/[0.04] pl-10 pr-4 text-sm text-white outline-none transition placeholder:text-slate-600 focus:border-indigo-400/60 focus:ring-2 focus:ring-indigo-500/10"
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <label
+                  htmlFor="email"
+                  className="mb-2 block text-sm font-medium text-slate-300"
+                >
+                  Email Address
+                </label>
+
+                <div className="relative">
+                  <Mail className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+
+                  <input
+                    id="email"
+                    type="email"
+                    value={email}
+                    onChange={(event) =>
+                      setEmail(
+                        event.target.value
+                      )
+                    }
+                    autoComplete="email"
+                    placeholder="you@example.com"
+                    className="h-12 w-full rounded-xl border border-white/10 bg-white/[0.04] pl-10 pr-4 text-sm text-white outline-none transition placeholder:text-slate-600 focus:border-indigo-400/60 focus:ring-2 focus:ring-indigo-500/10"
+                  />
+                </div>
+              </div>
+
+              {isRegister && (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label
+                      htmlFor="role"
+                      className="mb-2 block text-sm font-medium text-slate-300"
+                    >
+                      Role
+                    </label>
+
+                    <div className="relative">
+                      <BriefcaseBusiness className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+
+                      <input
+                        id="role"
+                        type="text"
+                        value={role}
+                        onChange={(event) =>
+                          setRole(
+                            event.target.value
+                          )
+                        }
+                        placeholder="e.g. Analyst"
+                        className="h-12 w-full rounded-xl border border-white/10 bg-white/[0.04] pl-10 pr-3 text-sm text-white outline-none transition placeholder:text-slate-600 focus:border-indigo-400/60 focus:ring-2 focus:ring-indigo-500/10"
+                      />
                     </div>
                   </div>
+
+                  <div>
+                    <label
+                      htmlFor="department"
+                      className="mb-2 block text-sm font-medium text-slate-300"
+                    >
+                      Department
+                    </label>
+
+                    <div className="relative">
+                      <Building2 className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+
+                      <input
+                        id="department"
+                        type="text"
+                        value={department}
+                        onChange={(event) =>
+                          setDepartment(
+                            event.target.value
+                          )
+                        }
+                        placeholder="e.g. Statistics"
+                        className="h-12 w-full rounded-xl border border-white/10 bg-white/[0.04] pl-10 pr-3 text-sm text-white outline-none transition placeholder:text-slate-600 focus:border-indigo-400/60 focus:ring-2 focus:ring-indigo-500/10"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <label
+                  htmlFor="password"
+                  className="mb-2 block text-sm font-medium text-slate-300"
+                >
+                  Password
+                </label>
+
+                <div className="relative">
+                  <LockKeyhole className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+
+                  <input
+                    id="password"
+                    type={
+                      showPassword
+                        ? 'text'
+                        : 'password'
+                    }
+                    value={password}
+                    onChange={(event) =>
+                      setPassword(
+                        event.target.value
+                      )
+                    }
+                    autoComplete={
+                      isRegister
+                        ? 'new-password'
+                        : 'current-password'
+                    }
+                    placeholder={
+                      isRegister
+                        ? 'Minimum 6 characters'
+                        : 'Enter your password'
+                    }
+                    className="h-12 w-full rounded-xl border border-white/10 bg-white/[0.04] pl-10 pr-12 text-sm text-white outline-none transition placeholder:text-slate-600 focus:border-indigo-400/60 focus:ring-2 focus:ring-indigo-500/10"
+                  />
+
                   <button
-                    onClick={() => fillCredentials(u)}
-                    className="shrink-0 text-2xs font-semibold text-primary border border-primary/30 bg-blue-950/30 hover:bg-blue-900/40 px-2.5 py-1.5 rounded-lg transition-colors"
+                    type="button"
+                    onClick={() =>
+                      setShowPassword(
+                        (value) => !value
+                      )
+                    }
+                    aria-label={
+                      showPassword
+                        ? 'Hide password'
+                        : 'Show password'
+                    }
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-500 transition hover:text-slate-300"
                   >
-                    Use
+                    {showPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
                   </button>
                 </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
+              </div>
 
-      {/* Right — Brand Panel */}
-      <LoginBrandPanel />
-    </div>
+              {isRegister && (
+                <div>
+                  <label
+                    htmlFor="confirm-password"
+                    className="mb-2 block text-sm font-medium text-slate-300"
+                  >
+                    Confirm Password
+                  </label>
+
+                  <div className="relative">
+                    <LockKeyhole className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+
+                    <input
+                      id="confirm-password"
+                      type={
+                        showPassword
+                          ? 'text'
+                          : 'password'
+                      }
+                      value={
+                        confirmPassword
+                      }
+                      onChange={(event) =>
+                        setConfirmPassword(
+                          event.target.value
+                        )
+                      }
+                      autoComplete="new-password"
+                      placeholder="Enter password again"
+                      className="h-12 w-full rounded-xl border border-white/10 bg-white/[0.04] pl-10 pr-4 text-sm text-white outline-none transition placeholder:text-slate-600 focus:border-indigo-400/60 focus:ring-2 focus:ring-indigo-500/10"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {error && (
+                <div
+                  role="alert"
+                  className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300"
+                >
+                  {error}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-indigo-500 px-4 text-sm font-semibold text-white transition hover:bg-indigo-400 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    {isRegister
+                      ? 'Creating Account...'
+                      : 'Signing In...'}
+                  </>
+                ) : (
+                  <>
+                    {isRegister
+                      ? 'Create Account'
+                      : 'Sign In to StatSkill AI'}
+                    <ArrowRight className="h-4 w-4" />
+                  </>
+                )}
+              </button>
+            </form>
+
+            <div className="mt-7 rounded-xl border border-white/10 bg-white/[0.025] px-4 py-3">
+              <div className="flex items-start gap-3">
+                <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" />
+
+                <p className="text-xs leading-5 text-slate-500">
+                  Each account has its own competency profile, assessments, learning progress, and improvement history.
+                </p>
+              </div>
+            </div>
+
+            <p className="mt-7 text-center text-xs text-slate-600">
+              By continuing, you agree to use StatSkill AI responsibly.
+            </p>
+          </div>
+        </section>
+      </div>
+    </main>
   );
 }

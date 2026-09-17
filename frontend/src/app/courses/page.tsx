@@ -29,9 +29,7 @@ import {
   apiGet,
   apiPost,
 } from '@/lib/api';
-
-
-const USER_ID = 1;
+import { getCurrentUserId } from '@/lib/auth';
 
 
 interface Course {
@@ -92,6 +90,11 @@ export default function CoursesPage() {
   const router = useRouter();
 
   const [
+    userId,
+    setUserId,
+  ] = useState<number | null>(null);
+
+  const [
     allCourses,
     setAllCourses,
   ] = useState<Course[]>([]);
@@ -122,7 +125,7 @@ export default function CoursesPage() {
   ] = useState('');
 
 
-  async function loadData() {
+  async function loadData(activeUserId: number) {
     setLoading(true);
     setError('');
 
@@ -133,7 +136,7 @@ export default function CoursesPage() {
       ] = await Promise.all([
         apiGet<Course[]>('/courses'),
         apiGet<DashboardResponse>(
-          `/dashboard/${USER_ID}/full`
+          `/dashboard/${activeUserId}/full`
         ),
       ]);
 
@@ -157,8 +160,16 @@ export default function CoursesPage() {
 
 
   useEffect(() => {
-    loadData();
-  }, []);
+    const activeUserId = getCurrentUserId();
+
+    if (!activeUserId) {
+      router.replace('/');
+      return;
+    }
+
+    setUserId(activeUserId);
+    loadData(activeUserId);
+  }, [router]);
 
 
   const enrolledMap = useMemo(() => {
@@ -197,6 +208,11 @@ export default function CoursesPage() {
   async function handleEnroll(
     courseId: number
   ) {
+    if (!userId) {
+      router.replace('/');
+      return;
+    }
+
     setBusyCourseId(courseId);
     setError('');
     setMessage('');
@@ -205,7 +221,7 @@ export default function CoursesPage() {
       await apiPost(
         '/courses/enroll',
         {
-          user_id: USER_ID,
+          user_id: userId,
           course_id: courseId,
         }
       );
@@ -214,7 +230,7 @@ export default function CoursesPage() {
         'Course enrolled successfully.'
       );
 
-      await loadData();
+      await loadData(userId);
     } catch (err) {
       console.error(
         'Enrollment error:',
@@ -236,6 +252,11 @@ export default function CoursesPage() {
     courseId: number,
     progress: number
   ) {
+    if (!userId) {
+      router.replace('/');
+      return;
+    }
+
     setBusyCourseId(courseId);
     setError('');
     setMessage('');
@@ -253,7 +274,7 @@ export default function CoursesPage() {
       await apiPost(
         '/courses/progress',
         {
-          user_id: USER_ID,
+          user_id: userId,
           course_id: courseId,
           progress: safeProgress,
         }
@@ -265,7 +286,7 @@ export default function CoursesPage() {
           : 'Course progress updated.'
       );
 
-      await loadData();
+      await loadData(userId);
     } catch (err) {
       console.error(
         'Progress update error:',
@@ -311,9 +332,9 @@ export default function CoursesPage() {
 
       router.push(
         `/ai-assessment?reassessment=1&skills=${encodeURIComponent(
-        skillParameter
-      )}&course_id=${courseId}`
-    );
+          skillParameter
+        )}&course_id=${courseId}`
+      );
     } catch (err) {
       console.error(
         'Reassessment error:',

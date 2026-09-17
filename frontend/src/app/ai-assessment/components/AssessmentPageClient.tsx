@@ -6,6 +6,8 @@ import React, {
   useState,
 } from 'react';
 
+import { useRouter } from 'next/navigation';
+
 import {
   AlertTriangle,
   Loader2,
@@ -14,6 +16,10 @@ import {
 import {
   apiPost,
 } from '@/lib/api';
+
+import {
+  getCurrentUserId,
+} from '@/lib/auth';
 
 import AssessmentSetup from './AssessmentSetup';
 import AssessmentQuestion from './AssessmentQuestion';
@@ -190,9 +196,6 @@ interface AnswerResponse {
 
   question_number?: number;
 }
-
-
-const USER_ID = 1;
 
 
 const initialSession:
@@ -425,6 +428,8 @@ function normalizeOptions(
 
 
 export default function AssessmentPageClient() {
+
+  const router = useRouter();
 
   const automaticStartRef =
     useRef(false);
@@ -701,6 +706,14 @@ export default function AssessmentPageClient() {
     sourceCourseId: number | null = null
   ) {
 
+    const userId =
+      getCurrentUserId();
+
+    if (!userId) {
+      router.replace('/');
+      return;
+    }
+
     if (
       !skills.length
     ) {
@@ -725,7 +738,7 @@ export default function AssessmentPageClient() {
         await apiPost<StartAssessmentResponse>(
           '/ai/assessment/start',
           {
-            user_id: USER_ID,
+            user_id: userId,
             skills,
             max_questions:
               maxQuestions,
@@ -818,6 +831,16 @@ export default function AssessmentPageClient() {
       );
     }
   }
+
+
+  useEffect(() => {
+    const userId =
+      getCurrentUserId();
+
+    if (!userId) {
+      router.replace('/');
+    }
+  }, [router]);
 
 
   /*

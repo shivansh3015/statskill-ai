@@ -1,8 +1,7 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-
 import {
   Brain,
   TrendingUp,
@@ -16,68 +15,174 @@ import {
   ArrowRight,
 } from 'lucide-react';
 
-import type {
-  DashboardResponse,
-  ImprovementHistory,
-} from './dashboardTypes';
+import { apiGet } from '@/lib/api';
+import { getCurrentUserId } from '@/lib/auth';
 
 
-type Props = {
-  dashboard: DashboardResponse;
+type DashboardResponse = {
+  user: {
+    id: number;
+    name: string;
+    email: string;
+    role: string | null;
+    department: string | null;
+  };
+
+  summary: {
+    overall_score: number;
+    total_skills: number;
+    strong_skills: number;
+    skill_gaps: number;
+    total_courses: number;
+    completed_courses: number;
+  };
+
+  competencies: Array<{
+    skill_name: string;
+    score: number;
+    level: string;
+  }>;
+
+  skill_gaps: Array<{
+    skill_name: string;
+    score: number;
+    level: string;
+    priority?: string;
+  }>;
+
+  recommendations: Array<{
+    course_id: number;
+    course_name: string;
+    category: string;
+    description?: string;
+    difficulty: string;
+    skill_gap: string;
+    current_score: number;
+    priority: string;
+    progress: number;
+    status: string;
+  }>;
+
+  courses: Array<{
+    course_id: number;
+    course_name: string;
+    category: string;
+    difficulty: string;
+    progress: number;
+    status: string;
+    enrolled_at: string;
+  }>;
+
+  improvement_history: Array<{
+    id: number;
+    skill_name: string;
+    previous_score: number;
+    new_score: number;
+    improvement: number;
+    improvement_percentage: number;
+    previous_level: string;
+    new_level: string;
+    source: string;
+    created_at: string;
+  }>;
 };
 
 
-function dateValue(
-  value?: string
-) {
-  if (!value) {
-    return 0;
+export default function DashboardBentoGrid() {
+  const [dashboard, setDashboard] =
+    useState<DashboardResponse | null>(null);
+
+  const [loading, setLoading] = useState(true);
+
+  const [error, setError] = useState('');
+
+
+  useEffect(() => {
+    async function loadDashboard() {
+      const userId =
+        getCurrentUserId();
+
+      if (!userId) {
+        setDashboard(null);
+        setError(
+          'Please sign in to view your dashboard.'
+        );
+        setLoading(false);
+        return;
+      }
+
+      try {
+        setLoading(true);
+        setError('');
+
+        const data = await apiGet<DashboardResponse>(
+          `/dashboard/${userId}/full`
+        );
+
+        setDashboard(data);
+      } catch (err) {
+        console.error(err);
+
+        setError(
+          err instanceof Error
+            ? err.message
+            : 'Failed to load dashboard.'
+        );
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadDashboard();
+  }, []);
+
+
+  if (loading) {
+    return (
+      <div className="rounded-xl border border-border bg-card p-8">
+        <div className="animate-pulse space-y-4">
+          <div className="h-5 w-48 rounded bg-muted" />
+          <div className="h-12 w-28 rounded bg-muted" />
+          <div className="h-4 w-full rounded bg-muted" />
+        </div>
+
+        <p className="text-sm text-muted-foreground mt-4">
+          Loading your competency dashboard...
+        </p>
+      </div>
+    );
   }
 
-  const normalized =
-    value.includes('T')
-      ? value
-      : value.replace(' ', 'T');
 
-  const timestamp =
-    new Date(normalized).getTime();
+  if (error) {
+    return (
+      <div className="rounded-xl border border-red-800/40 bg-red-950/30 p-5">
+        <div className="flex items-center gap-2 text-red-400">
+          <AlertTriangle size={18} />
 
-  return Number.isNaN(timestamp)
-    ? 0
-    : timestamp;
-}
+          <p className="font-semibold">
+            Dashboard could not be loaded
+          </p>
+        </div>
 
+        <p className="text-sm text-muted-foreground mt-2">
+          {error}
+        </p>
 
-function formatDate(
-  value?: string
-) {
-  if (!value) {
-    return 'No assessment yet';
+        <p className="text-xs text-muted-foreground mt-2">
+          Make sure FastAPI is running at
+          http://127.0.0.1:8000
+        </p>
+      </div>
+    );
   }
 
-  const normalized =
-    value.includes('T')
-      ? value
-      : value.replace(' ', 'T');
 
-  const date =
-    new Date(normalized);
-
-  if (
-    Number.isNaN(
-      date.getTime()
-    )
-  ) {
-    return 'Recently';
+  if (!dashboard) {
+    return null;
   }
 
-  return date.toLocaleDateString();
-}
 
-
-export default function DashboardBentoGrid({
-  dashboard,
-}: Props) {
   const overallScore =
     dashboard.summary?.overall_score ?? 0;
 
@@ -95,59 +200,47 @@ export default function DashboardBentoGrid({
 
 
   const activeCourses =
-    (dashboard.courses || []).filter(
+    dashboard.courses.filter(
       (course) =>
-        course.status
-          ?.toLowerCase() !==
-          'completed' &&
-        Number(course.progress) < 100
+        course.status !== 'Completed' &&
+        course.progress < 100
     ).length;
 
 
   const highPriorityGaps =
-    (dashboard.skill_gaps || []).filter(
+    dashboard.skill_gaps.filter(
       (gap) =>
-        gap.priority
-          ?.toLowerCase() ===
-          'high' ||
-        Number(gap.score) < 50
+        gap.priority === 'High' ||
+        gap.score < 50
     ).length;
 
 
-  const sortedHistory:
-    ImprovementHistory[] =
-    [
-      ...(dashboard.improvement_history ||
-        []),
-    ].sort(
-      (a, b) =>
-        dateValue(b.created_at) -
-        dateValue(a.created_at)
-    );
-
-
   const latestHistory =
-    sortedHistory[0];
+    dashboard.improvement_history?.[0];
 
 
   const latestImprovement =
     latestHistory?.improvement ?? 0;
 
+
   const latestPreviousScore =
     latestHistory?.previous_score ?? 0;
+
 
   const latestNewScore =
     latestHistory?.new_score ?? 0;
 
+
   const historyCount =
-    dashboard.improvement_history
-      ?.length ?? 0;
+    dashboard.improvement_history?.length ?? 0;
 
 
   const latestAssessmentDate =
-    formatDate(
-      latestHistory?.created_at
-    );
+    latestHistory?.created_at
+      ? new Date(
+          latestHistory.created_at
+        ).toLocaleDateString()
+      : 'No assessment yet';
 
 
   const nextRecommendation =
@@ -167,19 +260,20 @@ export default function DashboardBentoGrid({
   return (
     <div>
 
+      {/* =====================================================
+          AI ASSESSMENT CTA
+      ===================================================== */}
+
       <div className="mb-5 p-4 rounded-xl bg-gradient-to-r from-blue-900/50 to-cyan-900/30 border border-blue-700/30 flex items-center justify-between gap-4 flex-wrap">
 
         <div className="flex items-center gap-3">
 
           <div className="w-10 h-10 rounded-xl bg-primary/20 border border-primary/30 flex items-center justify-center">
-
             <Brain
               size={20}
               className="text-primary"
             />
-
           </div>
-
 
           <div>
 
@@ -200,19 +294,26 @@ export default function DashboardBentoGrid({
           href="/ai-assessment"
           className="flex items-center gap-2 bg-primary hover:opacity-90 active:scale-95 transition-all duration-150 text-white text-sm font-semibold px-5 py-2.5 rounded-lg shrink-0"
         >
-
           <Zap size={16} />
 
           Start AI Assessment
 
           <ArrowRight size={14} />
-
         </Link>
 
       </div>
 
 
+      {/* =====================================================
+          DASHBOARD GRID
+      ===================================================== */}
+
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-4 gap-4">
+
+
+        {/* ===================================================
+            OVERALL COMPETENCY SCORE
+        =================================================== */}
 
         <div className="lg:col-span-2 rounded-xl border border-blue-700/40 bg-gradient-to-br from-blue-900/50 to-cyan-900/20 card-shadow card-hover p-5 flex flex-col justify-between min-h-[140px]">
 
@@ -278,20 +379,13 @@ export default function DashboardBentoGrid({
                       : 'text-danger'
                   }`}
                 >
-                  {latestHistory
-                    ? `${
-                        latestImprovement >= 0
-                          ? '+'
-                          : ''
-                      }${latestImprovement} pts`
-                    : 'No updates yet'}
+                  {latestImprovement >= 0 ? '+' : ''}
+                  {latestImprovement} pts
                 </span>
 
-                {latestHistory && (
-                  <span className="text-xs text-muted-foreground">
-                    latest competency update
-                  </span>
-                )}
+                <span className="text-xs text-muted-foreground">
+                  latest competency update
+                </span>
 
               </div>
 
@@ -324,12 +418,7 @@ export default function DashboardBentoGrid({
               style={{
                 width: `${Math.min(
                   100,
-                  Math.max(
-                    0,
-                    Number(
-                      overallScore
-                    ) || 0
-                  )
+                  Math.max(0, overallScore)
                 )}%`,
               }}
             />
@@ -338,6 +427,10 @@ export default function DashboardBentoGrid({
 
         </div>
 
+
+        {/* ===================================================
+            STRONG SKILLS
+        =================================================== */}
 
         <div className="rounded-xl border border-emerald-800/40 bg-emerald-950/30 card-shadow card-hover p-4 flex flex-col justify-between">
 
@@ -366,7 +459,7 @@ export default function DashboardBentoGrid({
             </span>
 
             <p className="text-xs text-muted-foreground mt-1.5">
-              Competencies currently identified as strong
+              Competencies scoring 70 or above
             </p>
 
             <div className="flex items-center gap-1 mt-2 text-success">
@@ -383,6 +476,10 @@ export default function DashboardBentoGrid({
 
         </div>
 
+
+        {/* ===================================================
+            SKILL GAPS
+        =================================================== */}
 
         <div className="rounded-xl border border-red-800/40 bg-red-950/30 card-shadow card-hover p-4 flex flex-col justify-between">
 
@@ -411,7 +508,7 @@ export default function DashboardBentoGrid({
             </span>
 
             <p className="text-xs text-muted-foreground mt-1.5">
-              Competencies currently identified as gaps
+              Competencies below the 70-point threshold
             </p>
 
             <div className="flex items-center gap-1 mt-2 text-danger">
@@ -420,9 +517,7 @@ export default function DashboardBentoGrid({
 
               <span className="text-xs font-medium">
                 {highPriorityGaps} high-priority gap
-                {highPriorityGaps === 1
-                  ? ''
-                  : 's'}
+                {highPriorityGaps === 1 ? '' : 's'}
               </span>
 
             </div>
@@ -431,6 +526,10 @@ export default function DashboardBentoGrid({
 
         </div>
 
+
+        {/* ===================================================
+            ACTIVE COURSES
+        =================================================== */}
 
         <div className="rounded-xl border border-border bg-card card-shadow card-hover p-4 flex flex-col justify-between">
 
@@ -459,7 +558,7 @@ export default function DashboardBentoGrid({
             </span>
 
             <p className="text-xs text-muted-foreground mt-1.5">
-              In progress — {completedCourses} completed total
+              In progress â€” {completedCourses} completed total
             </p>
 
             <div className="flex items-center gap-1 mt-2 text-primary">
@@ -476,6 +575,10 @@ export default function DashboardBentoGrid({
 
         </div>
 
+
+        {/* ===================================================
+            ASSESSMENT RECORDS
+        =================================================== */}
 
         <div className="rounded-xl border border-border bg-card card-shadow card-hover p-4 flex flex-col justify-between">
 
@@ -522,6 +625,10 @@ export default function DashboardBentoGrid({
         </div>
 
 
+        {/* ===================================================
+            IMPROVEMENT
+        =================================================== */}
+
         <div className="rounded-xl border border-border bg-card card-shadow card-hover p-4 flex flex-col justify-between">
 
           <div className="flex items-start justify-between mb-3">
@@ -553,20 +660,13 @@ export default function DashboardBentoGrid({
                     : 'text-danger'
                 }`}
               >
-                {latestHistory
-                  ? `${
-                      latestImprovement >= 0
-                        ? '+'
-                        : ''
-                    }${latestImprovement}`
-                  : '—'}
+                {latestImprovement >= 0 ? '+' : ''}
+                {latestImprovement}
               </span>
 
-              {latestHistory && (
-                <span className="text-sm text-muted-foreground mb-1">
-                  pts
-                </span>
-              )}
+              <span className="text-sm text-muted-foreground mb-1">
+                pts
+              </span>
 
             </div>
 
@@ -579,29 +679,29 @@ export default function DashboardBentoGrid({
 
 
             {latestHistory && (
-              <div
-                className={`flex items-center gap-1 mt-2 ${
-                  latestImprovement >= 0
-                    ? 'text-success'
-                    : 'text-danger'
-                }`}
-              >
+
+              <div className="flex items-center gap-1 mt-2 text-success">
 
                 <TrendingUp size={12} />
 
                 <span className="text-xs font-medium">
                   {latestPreviousScore}
-                  {' → '}
+                  {' â†’ '}
                   {latestNewScore}
                 </span>
 
               </div>
+
             )}
 
           </div>
 
         </div>
 
+
+        {/* ===================================================
+            AI RECOMMENDATION
+        =================================================== */}
 
         <div className="lg:col-span-4 xl:col-span-4 2xl:col-span-4 rounded-xl border border-amber-800/30 bg-amber-950/20 card-shadow card-hover p-4 flex items-center justify-between gap-4 flex-wrap">
 
@@ -637,27 +737,27 @@ export default function DashboardBentoGrid({
 
 
           {nextRecommendation ? (
+
             <Link
               href="/courses"
               className="flex items-center gap-2 bg-amber-800/30 hover:bg-amber-800/50 border border-amber-700/30 text-amber-300 text-xs font-semibold px-4 py-2 rounded-lg transition-all duration-150 active:scale-95 shrink-0"
             >
-
               View Course
 
               <ArrowRight size={13} />
-
             </Link>
+
           ) : (
+
             <Link
               href="/ai-assessment"
               className="flex items-center gap-2 bg-amber-800/30 hover:bg-amber-800/50 border border-amber-700/30 text-amber-300 text-xs font-semibold px-4 py-2 rounded-lg transition-all duration-150 active:scale-95 shrink-0"
             >
-
               Reassess Skills
 
               <ArrowRight size={13} />
-
             </Link>
+
           )}
 
         </div>

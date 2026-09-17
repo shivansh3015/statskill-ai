@@ -5,37 +5,47 @@ import React, {
   useState,
 } from 'react';
 
-import {
-  AlertTriangle,
-} from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { Loader2 } from 'lucide-react';
 
 import AppLayout from '@/components/AppLayout';
-import { apiGet } from '@/lib/api';
 
 import DashboardBentoGrid from './components/DashboardBentoGrid';
 import DashboardChartsRow from './components/DashboardChartsRow';
 import DashboardBottomRow from './components/DashboardBottomRow';
 
-import type {
-  DashboardResponse,
-} from './components/dashboardTypes';
+import { apiGet } from '@/lib/api';
+import { getCurrentUserId } from '@/lib/auth';
 
 
-const USER_ID = 1;
+interface DashboardUser {
+  id: number;
+  name: string;
+  email: string;
+  role: string | null;
+  department: string | null;
+}
+
+
+interface DashboardResponse {
+  user: DashboardUser;
+}
 
 
 export default function DashboardPage() {
+  const router = useRouter();
+
   const [
-    dashboard,
-    setDashboard,
-  ] = useState<DashboardResponse | null>(
+    user,
+    setUser,
+  ] = useState<DashboardUser | null>(
     null
   );
 
   const [
-    loading,
-    setLoading,
-  ] = useState(true);
+    ready,
+    setReady,
+  ] = useState(false);
 
   const [
     error,
@@ -44,52 +54,90 @@ export default function DashboardPage() {
 
 
   useEffect(() => {
-    async function loadDashboard() {
+    let cancelled = false;
+
+    async function initializeDashboard() {
+      const userId =
+        getCurrentUserId();
+
+      if (!userId) {
+        router.replace('/');
+        return;
+      }
+
       try {
-        setLoading(true);
         setError('');
 
-        const data =
+        const response =
           await apiGet<DashboardResponse>(
-            `/dashboard/${USER_ID}/full`
+            `/dashboard/${userId}/full`
           );
 
-        setDashboard(data);
+        if (cancelled) {
+          return;
+        }
+
+        setUser(response.user);
+        setReady(true);
       } catch (err) {
+        if (cancelled) {
+          return;
+        }
+
         console.error(
-          'Dashboard error:',
+          'Unable to load dashboard user:',
           err
         );
 
         setError(
           err instanceof Error
             ? err.message
-            : 'Failed to load dashboard.'
+            : 'Unable to load your profile.'
         );
-      } finally {
-        setLoading(false);
       }
     }
 
-    loadDashboard();
-  }, []);
+    initializeDashboard();
 
-
-  const profileParts =
-    dashboard
-      ? [
-          dashboard.user.role,
-          dashboard.user.department,
-        ].filter(Boolean)
-      : [];
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
 
 
   const subtitle =
-    profileParts.length > 0
-      ? profileParts.join(' — ')
-      : loading
-        ? 'Loading employee profile...'
-        : 'Employee competency overview';
+    user
+      ? `${user.role || 'Employee'} — ${
+          user.department || 'General'
+        }`
+      : 'Loading your profile...';
+
+
+  if (!ready) {
+    return (
+      <AppLayout
+        pageTitle="Competency Dashboard"
+        pageSubtitle={
+          error
+            ? 'Unable to load profile'
+            : subtitle
+        }
+      >
+        <div className="rounded-xl border border-border bg-card p-8">
+          {error ? (
+            <div className="rounded-xl border border-red-800/40 bg-red-950/30 p-4 text-sm text-red-300">
+              {error}
+            </div>
+          ) : (
+            <div className="flex items-center gap-3 text-sm text-muted-foreground">
+              <Loader2 className="h-5 w-5 animate-spin" />
+              Loading your competency dashboard...
+            </div>
+          )}
+        </div>
+      </AppLayout>
+    );
+  }
 
 
   return (
@@ -97,87 +145,13 @@ export default function DashboardPage() {
       pageTitle="Competency Dashboard"
       pageSubtitle={subtitle}
     >
-      {loading && (
-        <div className="space-y-6">
+      <div className="space-y-6">
+        <DashboardBentoGrid />
 
-          <div className="card-base p-8">
-            <div className="animate-pulse space-y-4">
+        <DashboardChartsRow />
 
-              <div className="h-5 w-52 rounded bg-muted" />
-
-              <div className="h-12 w-32 rounded bg-muted" />
-
-              <div className="h-4 w-full rounded bg-muted" />
-
-              <div className="h-4 w-3/4 rounded bg-muted" />
-
-            </div>
-
-            <p className="text-sm text-muted-foreground mt-5">
-              Loading your competency dashboard...
-            </p>
-          </div>
-
-        </div>
-      )}
-
-
-      {!loading && error && (
-        <div className="rounded-xl border border-red-800/40 bg-red-950/30 p-6">
-
-          <div className="flex items-center gap-2 text-red-400">
-
-            <AlertTriangle size={20} />
-
-            <p className="font-semibold">
-              Dashboard could not be loaded
-            </p>
-
-          </div>
-
-          <p className="text-sm text-muted-foreground mt-3">
-            {error}
-          </p>
-
-          <p className="text-xs text-muted-foreground mt-2">
-            Make sure the FastAPI backend is running on port 8000.
-          </p>
-
-        </div>
-      )}
-
-
-      {!loading &&
-        !error &&
-        dashboard && (
-
-          <div className="space-y-6">
-
-            <DashboardBentoGrid
-              dashboard={dashboard}
-            />
-
-            <DashboardChartsRow
-              competencies={
-                dashboard.competencies
-              }
-            />
-
-            <DashboardBottomRow
-              improvementHistory={
-                dashboard.improvement_history
-              }
-              courses={
-                dashboard.courses
-              }
-              recommendations={
-                dashboard.recommendations
-              }
-            />
-
-          </div>
-
-        )}
+        <DashboardBottomRow />
+      </div>
     </AppLayout>
   );
 }

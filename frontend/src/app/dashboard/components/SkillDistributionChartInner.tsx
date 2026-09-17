@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 
 import {
   BarChart,
@@ -13,137 +13,147 @@ import {
   Cell,
 } from 'recharts';
 
-import type {
-  Competency,
-} from './dashboardTypes';
+import { apiGet } from '@/lib/api';
+import { getCurrentUserId } from '@/lib/auth';
 
 
-type Props = {
+type Competency = {
+  skill_name: string;
+  score: number;
+  level: string;
+};
+
+
+type DashboardResponse = {
   competencies: Competency[];
 };
 
 
 type DistributionItem = {
+  name: string;
+  score: number;
   level: string;
-  count: number;
 };
 
 
-const LEVELS = [
-  'Beginner',
-  'Foundation',
-  'Intermediate',
-  'Advanced',
-  'Expert',
-];
+const barColor = (score: number) => {
+  if (score >= 80) return '#8b5cf6';
+  if (score >= 65) return '#3b82f6';
+  if (score >= 50) return '#06b6d4';
+  if (score >= 35) return '#10b981';
+
+  return '#ef4444';
+};
 
 
-function levelColor(
-  level: string
-) {
-  const colors:
-    Record<string, string> = {
+export default function SkillDistributionChartInner() {
+  const [distributionData, setDistributionData] =
+    useState<DistributionItem[]>([]);
 
-    Beginner:
-      '#ef4444',
+  const [loading, setLoading] =
+    useState(true);
 
-    Foundation:
-      '#10b981',
-
-    Intermediate:
-      '#06b6d4',
-
-    Advanced:
-      '#3b82f6',
-
-    Expert:
-      '#8b5cf6',
-  };
-
-  return (
-    colors[level] ||
-    '#64748b'
-  );
-}
+  const [error, setError] =
+    useState('');
 
 
-function CustomTooltip({
-  active,
-  payload,
-  label,
-}: {
-  active?: boolean;
-  payload?: Array<{
-    value?: number;
-  }>;
-  label?: string;
-}) {
-  if (
-    !active ||
-    !payload?.length
-  ) {
-    return null;
+  useEffect(() => {
+    async function loadSkillDistribution() {
+      const userId =
+        getCurrentUserId();
+
+      if (!userId) {
+        setDistributionData([]);
+        setError(
+          'Please sign in to view skill distribution.'
+        );
+        setLoading(false);
+        return;
+      }
+
+      try {
+        setLoading(true);
+        setError('');
+
+        const data =
+          await apiGet<DashboardResponse>(
+            `/dashboard/${userId}/full`
+          );
+
+
+        const chartData: DistributionItem[] =
+          (data.competencies || []).map(
+            (competency) => ({
+              name: competency.skill_name,
+              score:
+                Number(competency.score) || 0,
+              level:
+                competency.level ||
+                'Not Assessed',
+            })
+          );
+
+
+        setDistributionData(chartData);
+
+      } catch (err) {
+        console.error(
+          'Skill distribution error:',
+          err
+        );
+
+        setError(
+          err instanceof Error
+            ? err.message
+            : 'Failed to load skill distribution.'
+        );
+
+      } finally {
+        setLoading(false);
+      }
+    }
+
+
+    loadSkillDistribution();
+
+  }, []);
+
+
+  if (loading) {
+    return (
+      <div className="h-[280px] flex items-center justify-center">
+
+        <p className="text-sm text-muted-foreground">
+          Loading skill distribution...
+        </p>
+
+      </div>
+    );
   }
 
-  const count =
-    Number(
-      payload[0]?.value
-    ) || 0;
 
-  return (
-    <div className="bg-navy-700 border border-border rounded-xl p-3 card-shadow text-xs">
+  if (error) {
+    return (
+      <div className="h-[280px] flex items-center justify-center">
 
-      <p className="font-semibold text-foreground">
-        {label}
-      </p>
+        <div className="text-center">
 
-      <p className="text-muted-foreground mt-1">
-        Skills:{' '}
+          <p className="text-sm text-red-400 font-medium">
+            Unable to load skill distribution
+          </p>
 
-        <span className="font-semibold text-foreground">
-          {count}
-        </span>
-      </p>
+          <p className="text-xs text-muted-foreground mt-1">
+            {error}
+          </p>
 
-    </div>
-  );
-}
+        </div>
 
-
-export default function SkillDistributionChartInner({
-  competencies,
-}: Props) {
-  const distributionData:
-    DistributionItem[] =
-    LEVELS.map(
-      (level) => ({
-        level,
-
-        count:
-          (competencies || []).filter(
-            (competency) =>
-              competency.level ===
-              level
-          ).length,
-      })
+      </div>
     );
+  }
 
 
-  const totalSkills =
-    distributionData.reduce(
-      (
-        total,
-        item
-      ) =>
-        total +
-        item.count,
-      0
-    );
-
-
-  if (
-    totalSkills === 0
-  ) {
+  if (distributionData.length === 0) {
     return (
       <div className="h-[280px] flex items-center justify-center">
 
@@ -164,14 +174,64 @@ export default function SkillDistributionChartInner({
   }
 
 
-  const maxCount =
-    Math.max(
-      1,
-      ...distributionData.map(
-        (item) =>
-          item.count
-      )
+  const CustomTooltip = ({
+    active,
+    payload,
+    label,
+  }: {
+    active?: boolean;
+    payload?: {
+      value: number;
+    }[];
+    label?: string;
+  }) => {
+
+    if (!active || !payload?.length) {
+      return null;
+    }
+
+
+    const score =
+      payload[0]?.value ?? 0;
+
+
+    const entry =
+      distributionData.find(
+        (item) => item.name === label
+      );
+
+
+    return (
+      <div className="bg-navy-700 border border-border rounded-xl p-3 card-shadow text-xs">
+
+        <p className="font-semibold text-foreground mb-1">
+          {label}
+        </p>
+
+        <p className="text-muted-foreground">
+          Score:{' '}
+
+          <span className="text-foreground font-semibold tabular-nums">
+            {score}/100
+          </span>
+        </p>
+
+
+        {entry && (
+
+          <p className="text-muted-foreground mt-0.5">
+            Level:{' '}
+
+            <span className="text-foreground font-semibold">
+              {entry.level}
+            </span>
+          </p>
+
+        )}
+
+      </div>
     );
+  };
 
 
   return (
@@ -183,9 +243,9 @@ export default function SkillDistributionChartInner({
       <BarChart
         data={distributionData}
         margin={{
-          top: 10,
-          right: 15,
-          bottom: 20,
+          top: 5,
+          right: 10,
+          bottom: 40,
           left: 0,
         }}
       >
@@ -196,26 +256,26 @@ export default function SkillDistributionChartInner({
           vertical={false}
         />
 
+
         <XAxis
-          dataKey="level"
+          dataKey="name"
           tick={{
             fill:
               'var(--muted-foreground)',
-            fontSize: 10,
+            fontSize: 9,
             fontFamily:
               'var(--font-sans)',
           }}
+          angle={-35}
+          textAnchor="end"
+          interval={0}
           tickLine={false}
           axisLine={false}
-          interval={0}
         />
 
+
         <YAxis
-          allowDecimals={false}
-          domain={[
-            0,
-            maxCount + 1,
-          ]}
+          domain={[0, 100]}
           tick={{
             fill:
               'var(--muted-foreground)',
@@ -228,39 +288,30 @@ export default function SkillDistributionChartInner({
           width={28}
         />
 
+
         <Tooltip
-          content={
-            <CustomTooltip />
-          }
+          content={<CustomTooltip />}
           cursor={{
             fill:
               'rgba(255,255,255,0.04)',
           }}
         />
 
+
         <Bar
-          dataKey="count"
-          radius={[
-            5,
-            5,
-            0,
-            0,
-          ]}
-          maxBarSize={48}
+          dataKey="score"
+          radius={[4, 4, 0, 0]}
+          maxBarSize={32}
         >
 
           {distributionData.map(
-            (entry) => (
+            (entry, index) => (
 
               <Cell
-                key={
-                  entry.level
-                }
-                fill={
-                  levelColor(
-                    entry.level
-                  )
-                }
+                key={`cell-skill-${index}`}
+                fill={barColor(
+                  entry.score
+                )}
               />
 
             )

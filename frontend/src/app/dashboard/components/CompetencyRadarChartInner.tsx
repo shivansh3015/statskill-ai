@@ -1,114 +1,219 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 
 import {
   RadarChart,
   PolarGrid,
   PolarAngleAxis,
-  PolarRadiusAxis,
   Radar,
   ResponsiveContainer,
   Tooltip,
+  Legend,
 } from 'recharts';
 
-import type {
-  Competency,
-} from './dashboardTypes';
+import { apiGet } from '@/lib/api';
+import { getCurrentUserId } from '@/lib/auth';
 
 
-type Props = {
-  competencies: Competency[];
-};
-
-
-type RadarItem = {
-  skill: string;
+type Competency = {
+  skill_name: string;
   score: number;
   level: string;
 };
 
 
-function CustomTooltip({
+type DashboardResponse = {
+  competencies: Competency[];
+};
+
+
+type RadarItem = {
+  domain: string;
+  current: number;
+  target: number;
+};
+
+
+const CustomTooltip = ({
   active,
   payload,
+  label,
 }: {
   active?: boolean;
-  payload?: Array<{
-    payload?: RadarItem;
-    value?: number;
-  }>;
-}) {
-  if (
-    !active ||
-    !payload?.length ||
-    !payload[0]?.payload
-  ) {
+  payload?: {
+    name: string;
+    value: number;
+    color: string;
+  }[];
+  label?: string;
+}) => {
+  if (!active || !payload?.length) {
     return null;
   }
-
-  const item =
-    payload[0].payload;
 
   return (
     <div className="bg-navy-700 border border-border rounded-xl p-3 card-shadow text-xs">
 
-      <p className="font-semibold text-foreground">
-        {item.skill}
+      <p className="font-semibold text-foreground mb-2">
+        {label}
       </p>
 
-      <p className="text-muted-foreground mt-1">
-        Score:{' '}
+      {payload.map((entry, i) => (
+        <div
+          key={`radar-tooltip-${i}`}
+          className="flex items-center gap-2"
+        >
+          <span
+            className="w-2 h-2 rounded-full"
+            style={{
+              background: entry.color,
+            }}
+          />
 
-        <span className="font-semibold text-foreground">
-          {item.score}/100
-        </span>
-      </p>
+          <span className="text-muted-foreground">
+            {entry.name}:
+          </span>
 
-      <p className="text-muted-foreground mt-1">
-        Level:{' '}
-
-        <span className="font-semibold text-primary">
-          {item.level}
-        </span>
-      </p>
+          <span className="font-semibold text-foreground tabular-nums">
+            {entry.value}
+          </span>
+        </div>
+      ))}
 
     </div>
   );
-}
+};
 
 
-export default function CompetencyRadarChartInner({
-  competencies,
-}: Props) {
-  const radarData:
-    RadarItem[] =
-    (competencies || []).map(
-      (competency) => ({
-        skill:
-          competency.skill_name,
+export default function CompetencyRadarChartInner() {
+  const [radarData, setRadarData] =
+    useState<RadarItem[]>([]);
 
-        score:
-          Math.max(
-            0,
-            Math.min(
-              100,
-              Number(
-                competency.score
-              ) || 0
-            )
-          ),
+  const [loading, setLoading] =
+    useState(true);
 
-        level:
-          competency.level ||
-          'Not Assessed',
-      })
+  const [error, setError] =
+    useState('');
+
+
+  useEffect(() => {
+    async function loadCompetencies() {
+      const userId =
+        getCurrentUserId();
+
+      if (!userId) {
+        setRadarData([]);
+        setError(
+          'Please sign in to view competency data.'
+        );
+        setLoading(false);
+        return;
+      }
+
+      try {
+        setLoading(true);
+        setError('');
+
+        const data =
+          await apiGet<DashboardResponse>(
+            `/dashboard/${userId}/full`
+          );
+
+
+        const chartData: RadarItem[] =
+          (data.competencies || []).map(
+            (competency) => {
+
+              const currentScore =
+                Number(competency.score) || 0;
+
+              return {
+                domain:
+                  competency.skill_name,
+
+                current:
+                  currentScore,
+
+                /*
+                  Temporary target:
+                  minimum target = 80.
+
+                  If employee already scores
+                  above 80, target does not
+                  become lower than their
+                  current score.
+                */
+                target:
+                  Math.max(
+                    80,
+                    currentScore
+                  ),
+              };
+            }
+          );
+
+
+        setRadarData(chartData);
+
+      } catch (err) {
+        console.error(
+          'Radar chart error:',
+          err
+        );
+
+        setError(
+          err instanceof Error
+            ? err.message
+            : 'Failed to load competency data.'
+        );
+
+      } finally {
+        setLoading(false);
+      }
+    }
+
+
+    loadCompetencies();
+
+  }, []);
+
+
+  if (loading) {
+    return (
+      <div className="h-[280px] flex items-center justify-center">
+
+        <p className="text-sm text-muted-foreground">
+          Loading competency chart...
+        </p>
+
+      </div>
     );
+  }
 
 
-  if (
-    radarData.length === 0
-  ) {
+  if (error) {
+    return (
+      <div className="h-[280px] flex items-center justify-center">
+
+        <div className="text-center">
+
+          <p className="text-sm text-red-400 font-medium">
+            Unable to load competency chart
+          </p>
+
+          <p className="text-xs text-muted-foreground mt-1">
+            {error}
+          </p>
+
+        </div>
+
+      </div>
+    );
+  }
+
+
+  if (radarData.length === 0) {
     return (
       <div className="h-[280px] flex items-center justify-center">
 
@@ -138,10 +243,10 @@ export default function CompetencyRadarChartInner({
       <RadarChart
         data={radarData}
         margin={{
-          top: 15,
-          right: 25,
-          bottom: 15,
-          left: 25,
+          top: 10,
+          right: 20,
+          bottom: 10,
+          left: 20,
         }}
       >
 
@@ -150,7 +255,7 @@ export default function CompetencyRadarChartInner({
         />
 
         <PolarAngleAxis
-          dataKey="skill"
+          dataKey="domain"
           tick={{
             fill:
               'var(--muted-foreground)',
@@ -160,30 +265,41 @@ export default function CompetencyRadarChartInner({
           }}
         />
 
-        <PolarRadiusAxis
-          domain={[0, 100]}
-          tickCount={6}
-          tick={{
-            fill:
-              'var(--muted-foreground)',
-            fontSize: 9,
-          }}
-          axisLine={false}
-        />
 
         <Radar
-          name="Competency Score"
-          dataKey="score"
+          name="Current"
+          dataKey="current"
           stroke="var(--primary)"
           fill="var(--primary)"
-          fillOpacity={0.25}
+          fillOpacity={0.2}
           strokeWidth={2}
         />
 
+
+        <Radar
+          name="Target"
+          dataKey="target"
+          stroke="var(--accent)"
+          fill="var(--accent)"
+          fillOpacity={0.08}
+          strokeWidth={1.5}
+          strokeDasharray="4 4"
+        />
+
+
         <Tooltip
-          content={
-            <CustomTooltip />
-          }
+          content={<CustomTooltip />}
+        />
+
+
+        <Legend
+          wrapperStyle={{
+            fontSize: '11px',
+            fontFamily:
+              'var(--font-sans)',
+            color:
+              'var(--muted-foreground)',
+          }}
         />
 
       </RadarChart>

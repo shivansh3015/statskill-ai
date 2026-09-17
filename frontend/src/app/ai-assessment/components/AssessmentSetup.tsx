@@ -1,7 +1,12 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, {
+  useEffect,
+  useState,
+} from 'react';
+
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 
 import {
   Brain,
@@ -18,6 +23,7 @@ import {
 } from 'lucide-react';
 
 import { apiGet } from '@/lib/api';
+import { getCurrentUserId } from '@/lib/auth';
 
 
 interface AssessmentSetupProps {
@@ -45,9 +51,6 @@ type SkillItem = {
   currentScore: number | null;
   level: string;
 };
-
-
-const USER_ID = 1;
 
 
 /*
@@ -95,31 +98,50 @@ const scoreBarColor = (score: number) => {
 export default function AssessmentSetup({
   onStart,
 }: AssessmentSetupProps) {
+  const router = useRouter();
+
   const [skills, setSkills] =
     useState<SkillItem[]>([]);
 
-  const [selectedSkills, setSelectedSkills] =
-    useState<string[]>([]);
+  const [
+    selectedSkills,
+    setSelectedSkills,
+  ] = useState<string[]>([]);
 
-  const [maxQuestions, setMaxQuestions] =
-    useState(8);
+  const [
+    maxQuestions,
+    setMaxQuestions,
+  ] = useState(8);
 
-  const [loading, setLoading] =
-    useState(true);
+  const [
+    loading,
+    setLoading,
+  ] = useState(true);
 
-  const [error, setError] =
-    useState('');
+  const [
+    error,
+    setError,
+  ] = useState('');
 
 
   useEffect(() => {
     async function loadCompetencies() {
+      const userId =
+        getCurrentUserId();
+
+      if (!userId) {
+        setLoading(false);
+        router.replace('/');
+        return;
+      }
+
       try {
         setLoading(true);
         setError('');
 
         const data =
           await apiGet<DashboardResponse>(
-            `/dashboard/${USER_ID}/full`
+            `/dashboard/${userId}/full`
           );
 
 
@@ -137,29 +159,33 @@ export default function AssessmentSetup({
           Otherwise show "Not Assessed".
         */
         const skillItems: SkillItem[] =
-          skillCatalog.map((skillName) => {
-            const existing =
-              existingCompetencies.find(
-                (competency) =>
-                  competency.skill_name
-                    .toLowerCase() ===
-                  skillName.toLowerCase()
-              );
+          skillCatalog.map(
+            (skillName) => {
+              const existing =
+                existingCompetencies.find(
+                  (competency) =>
+                    competency.skill_name
+                      .toLowerCase() ===
+                    skillName.toLowerCase()
+                );
 
 
-            return {
-              name: skillName,
+              return {
+                name: skillName,
 
-              currentScore:
-                existing
-                  ? Number(existing.score)
-                  : null,
+                currentScore:
+                  existing
+                    ? Number(
+                        existing.score
+                      )
+                    : null,
 
-              level:
-                existing?.level ||
-                'Not Assessed',
-            };
-          });
+                level:
+                  existing?.level ||
+                  'Not Assessed',
+              };
+            }
+          );
 
 
         /*
@@ -218,13 +244,16 @@ export default function AssessmentSetup({
 
 
         if (gapSkills.length > 0) {
-          setSelectedSkills(gapSkills);
+          setSelectedSkills(
+            gapSkills
+          );
         } else {
           setSelectedSkills(
             skillItems
               .slice(0, 4)
               .map(
-                (skill) => skill.name
+                (skill) =>
+                  skill.name
               )
           );
         }
@@ -249,7 +278,7 @@ export default function AssessmentSetup({
 
     loadCompetencies();
 
-  }, []);
+  }, [router]);
 
 
   function toggleSkill(
@@ -258,7 +287,9 @@ export default function AssessmentSetup({
     setSelectedSkills(
       (previous) => {
         if (
-          previous.includes(skillName)
+          previous.includes(
+            skillName
+          )
         ) {
           return previous.filter(
             (skill) =>
@@ -278,7 +309,8 @@ export default function AssessmentSetup({
   function selectAll() {
     setSelectedSkills(
       skills.map(
-        (skill) => skill.name
+        (skill) =>
+          skill.name
       )
     );
   }
@@ -393,7 +425,9 @@ export default function AssessmentSetup({
 
           <button
             type="button"
-            onClick={startAssessment}
+            onClick={
+              startAssessment
+            }
             disabled={
               selectedSkills.length === 0 ||
               loading
@@ -405,7 +439,9 @@ export default function AssessmentSetup({
 
             Begin Assessment
 
-            <ChevronRight size={16} />
+            <ChevronRight
+              size={16}
+            />
 
           </button>
 
@@ -559,7 +595,9 @@ export default function AssessmentSetup({
 
             <button
               type="button"
-              onClick={clearSelection}
+              onClick={
+                clearSelection
+              }
               className="text-xs text-muted-foreground hover:text-foreground transition-colors"
             >
               Clear
@@ -594,7 +632,9 @@ export default function AssessmentSetup({
 
             <div className="flex items-center gap-2 text-red-400">
 
-              <AlertTriangle size={16} />
+              <AlertTriangle
+                size={16}
+              />
 
               <span className="text-sm font-semibold">
                 Could not load existing competency scores
@@ -777,7 +817,9 @@ export default function AssessmentSetup({
 
             <select
               id="question-count"
-              value={maxQuestions}
+              value={
+                maxQuestions
+              }
               onChange={(event) =>
                 setMaxQuestions(
                   Number(
@@ -839,7 +881,10 @@ export default function AssessmentSetup({
             'The backend evaluates each answer and determines the next adaptive question.',
             'Final results are used for skill-gap analysis and course recommendations.',
           ].map(
-            (instruction, index) => (
+            (
+              instruction,
+              index
+            ) => (
 
               <li
                 key={index}
@@ -900,7 +945,9 @@ export default function AssessmentSetup({
 
         <button
           type="button"
-          onClick={startAssessment}
+          onClick={
+            startAssessment
+          }
           disabled={
             selectedSkills.length === 0 ||
             loading
@@ -912,7 +959,9 @@ export default function AssessmentSetup({
 
           Start AI Assessment
 
-          <ChevronRight size={16} />
+          <ChevronRight
+            size={16}
+          />
 
         </button>
 
