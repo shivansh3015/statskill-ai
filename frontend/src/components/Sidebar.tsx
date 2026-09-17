@@ -1,8 +1,16 @@
 'use client';
 
-import React from 'react';
+import React, {
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
+
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import {
+  usePathname,
+  useRouter,
+} from 'next/navigation';
 
 import AppLogo from '@/components/ui/AppLogo';
 
@@ -15,7 +23,14 @@ import {
   ChevronLeft,
   ChevronRight,
   Zap,
+  LogOut,
 } from 'lucide-react';
+
+import {
+  clearCurrentUser,
+  getCurrentUser,
+  type AuthUser,
+} from '@/lib/auth';
 
 
 interface NavItem {
@@ -70,26 +85,76 @@ interface SidebarProps {
 }
 
 
+function getInitials(
+  name?: string | null
+) {
+  const parts =
+    (name || '')
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+
+  if (parts.length === 0) {
+    return 'U';
+  }
+
+  if (parts.length === 1) {
+    return parts[0]
+      .slice(0, 2)
+      .toUpperCase();
+  }
+
+  return (
+    `${parts[0][0] || ''}${
+      parts[parts.length - 1][0] || ''
+    }`
+  ).toUpperCase();
+}
+
+
 export default function Sidebar({
   collapsed,
   onToggle,
 }: SidebarProps) {
-
   const pathname =
     usePathname();
+
+  const router =
+    useRouter();
+
+  const [
+    user,
+    setUser,
+  ] =
+    useState<AuthUser | null>(null);
+
+
+  useEffect(() => {
+    setUser(
+      getCurrentUser()
+    );
+  }, []);
+
+
+  const initials =
+    useMemo(
+      () =>
+        getInitials(
+          user?.name
+        ),
+      [user]
+    );
 
 
   const isActive = (
     href: string
   ) => {
-
     if (
       href === '/dashboard' &&
       pathname === '/'
     ) {
       return true;
     }
-
 
     return (
       pathname === href ||
@@ -100,8 +165,15 @@ export default function Sidebar({
   };
 
 
-  return (
+  function handleLogout() {
+    clearCurrentUser();
 
+    router.replace('/');
+    router.refresh();
+  }
+
+
+  return (
     <aside
       className="relative flex flex-col h-full bg-navy-800 sidebar-shadow border-r border-border transition-all duration-300 ease-in-out"
       style={{
@@ -132,7 +204,6 @@ export default function Sidebar({
         <div className="flex items-center gap-2.5">
 
           <AppLogo size={32} />
-
 
           {!collapsed && (
 
@@ -204,7 +275,6 @@ export default function Sidebar({
 
           {navItems.map(
             (item) => {
-
               const NavIcon =
                 item.icon;
 
@@ -212,7 +282,6 @@ export default function Sidebar({
                 isActive(
                   item.href
                 );
-
 
               return (
 
@@ -241,7 +310,6 @@ export default function Sidebar({
                       }`}
                     />
 
-
                     {!collapsed && (
 
                       <span className="truncate">
@@ -249,7 +317,6 @@ export default function Sidebar({
                       </span>
 
                     )}
-
 
                     {collapsed && (
 
@@ -264,14 +331,11 @@ export default function Sidebar({
                 </li>
 
               );
-
             }
           )}
 
         </ul>
 
-
-        {/* AI assessment CTA */}
 
         {!collapsed && (
 
@@ -290,11 +354,9 @@ export default function Sidebar({
 
             </div>
 
-
             <p className="text-xs text-muted-foreground leading-relaxed mb-2.5">
               Take an adaptive competency assessment or reassess after completing a course.
             </p>
-
 
             <Link
               href="/ai-assessment"
@@ -318,7 +380,6 @@ export default function Sidebar({
 
           {bottomNavItems.map(
             (item) => {
-
               const NavIcon =
                 item.icon;
 
@@ -326,7 +387,6 @@ export default function Sidebar({
                 isActive(
                   item.href
                 );
-
 
               return (
 
@@ -355,7 +415,6 @@ export default function Sidebar({
                       }`}
                     />
 
-
                     {!collapsed && (
 
                       <span className="truncate">
@@ -363,7 +422,6 @@ export default function Sidebar({
                       </span>
 
                     )}
-
 
                     {collapsed && (
 
@@ -378,45 +436,75 @@ export default function Sidebar({
                 </li>
 
               );
-
             }
           )}
 
         </ul>
 
 
-        {/* Current user */}
-
         {!collapsed && (
 
-          <div className="mt-3 mx-1 p-2.5 rounded-lg bg-muted border border-border flex items-center gap-2.5">
+          <>
+            <div className="mt-3 mx-1 p-2.5 rounded-lg bg-muted border border-border flex items-center gap-2.5">
 
-            <div className="w-8 h-8 rounded-full bg-primary-gradient flex items-center justify-center text-white text-xs font-bold shrink-0">
-              S
+              <div className="w-8 h-8 rounded-full bg-primary-gradient flex items-center justify-center text-white text-xs font-bold shrink-0">
+                {initials}
+              </div>
+
+              <div className="flex-1 min-w-0">
+
+                <p className="text-xs font-semibold text-foreground truncate">
+                  {user?.name || 'Signed-in user'}
+                </p>
+
+                <p className="text-2xs text-muted-foreground truncate">
+                  {user?.role || 'Employee'}
+                </p>
+
+              </div>
+
             </div>
 
-
-            <div className="flex-1 min-w-0">
-
-              <p className="text-xs font-semibold text-foreground truncate">
-                Shivansh
-              </p>
-
-              <p className="text-2xs text-muted-foreground truncate">
-                Statistical Officer
-              </p>
-
-            </div>
-
-          </div>
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="mt-2 w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-red-400 hover:bg-red-950/30 transition-colors"
+            >
+              <LogOut
+                size={17}
+                className="shrink-0"
+              />
+              Log out
+            </button>
+          </>
 
         )}
 
 
         {collapsed && (
 
-          <div className="mt-2 mx-auto w-8 h-8 rounded-full bg-primary-gradient flex items-center justify-center text-white text-xs font-bold">
-            S
+          <div className="mt-2 space-y-2">
+
+            <div
+              className="mx-auto w-8 h-8 rounded-full bg-primary-gradient flex items-center justify-center text-white text-xs font-bold"
+              title={
+                user?.name ||
+                'Signed-in user'
+              }
+            >
+              {initials}
+            </div>
+
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="mx-auto w-8 h-8 rounded-lg flex items-center justify-center text-red-400 hover:bg-red-950/30 transition-colors"
+              title="Log out"
+              aria-label="Log out"
+            >
+              <LogOut size={16} />
+            </button>
+
           </div>
 
         )}
@@ -424,6 +512,5 @@ export default function Sidebar({
       </div>
 
     </aside>
-
   );
 }
