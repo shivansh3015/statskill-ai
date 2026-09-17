@@ -1,11 +1,14 @@
 'use client';
 
-import React from 'react';
+import React, {
+  useEffect,
+  useState,
+} from 'react';
+
 import dynamic from 'next/dynamic';
 
-import type {
-  Competency,
-} from './dashboardTypes';
+import { apiGet } from '@/lib/api';
+import { getCurrentUserId } from '@/lib/auth';
 
 
 const SkillDistributionChartInner =
@@ -20,14 +23,75 @@ const SkillDistributionChartInner =
   );
 
 
-type Props = {
-  competencies: Competency[];
+type DashboardResponse = {
+  competencies?: Array<{
+    skill_name: string;
+    score: number;
+    level: string;
+  }>;
 };
 
 
-export default function SkillDistributionChart({
-  competencies,
-}: Props) {
+export default function SkillDistributionChart() {
+  const [
+    skillCount,
+    setSkillCount,
+  ] = useState(0);
+
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadSkillCount() {
+      const userId =
+        getCurrentUserId();
+
+      if (!userId) {
+        if (!cancelled) {
+          setSkillCount(0);
+        }
+
+        return;
+      }
+
+      try {
+        const data =
+          await apiGet<DashboardResponse>(
+            `/dashboard/${userId}/full`
+          );
+
+        if (cancelled) {
+          return;
+        }
+
+        const competencies =
+          Array.isArray(data.competencies)
+            ? data.competencies
+            : [];
+
+        setSkillCount(
+          competencies.length
+        );
+      } catch (error) {
+        console.error(
+          'Skill count loading error:',
+          error
+        );
+
+        if (!cancelled) {
+          setSkillCount(0);
+        }
+      }
+    }
+
+    loadSkillCount();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+
   return (
     <div className="card-base p-5">
 
@@ -47,15 +111,13 @@ export default function SkillDistributionChart({
 
 
         <span className="badge-muted">
-          {competencies.length} Skills
+          {skillCount} Skill{skillCount === 1 ? '' : 's'}
         </span>
 
       </div>
 
 
-      <SkillDistributionChartInner
-        competencies={competencies}
-      />
+      <SkillDistributionChartInner />
 
     </div>
   );
