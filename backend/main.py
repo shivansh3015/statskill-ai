@@ -1,5 +1,6 @@
 from __future__ import annotations
-
+import hashlib
+import secrets
 import json
 import os
 import sqlite3
@@ -332,7 +333,12 @@ def init_db() -> None:
         "updated_at",
         "TEXT DEFAULT CURRENT_TIMESTAMP",
     )
-
+    ensure_column(
+        connection,
+        "users",
+        "password_hash",
+        "TEXT",
+    )
     ensure_column(connection, "ai_assessment_questions", "answered", "INTEGER DEFAULT 0")
     ensure_column(connection, "ai_assessment_questions", "evaluation_score", "INTEGER")
     ensure_column(connection, "ai_assessment_questions", "evaluation_feedback", "TEXT")
@@ -383,6 +389,19 @@ class UserCreate(BaseModel):
     department: str | None = None
 
 
+class UserRegister(BaseModel):
+    name: str
+    email: str
+    password: str
+    role: str | None = None
+    department: str | None = None
+
+
+class UserLogin(BaseModel):
+    email: str
+    password: str
+
+
 class CompetencyCreate(BaseModel):
     user_id: int
     skill_name: str
@@ -427,6 +446,63 @@ class CourseQuizSubmit(BaseModel):
 # ============================================================
 # GENERAL HELPERS
 # ============================================================
+
+def hash_password(password: str) -> str:
+    password = password.strip()
+
+    if len(password) < 6:
+        raise HTTPException(
+            status_code=400,
+            detail="Password must contain at least 6 characters.",
+        )
+
+    salt = secrets.token_hex(16)
+
+    password_hash = hashlib.pbkdf2_hmac(
+        "sha256",
+        password.encode("utf-8"),
+        salt.encode("utf-8"),
+        120_000,
+    ).hex()
+
+    return f"{salt}${password_hash}"
+
+
+def verify_password(
+    password: str,
+    stored_password: str | None,
+) -> bool:
+    if not stored_password:
+        return False
+
+    try:
+        salt, expected_hash = stored_password.split("$", 1)
+
+        actual_hash = hashlib.pbkdf2_hmac(
+            "sha256",
+            password.encode("utf-8"),
+            salt.encode("utf-8"),
+            120_000,
+        ).hex()
+
+        return secrets.compare_digest(
+            actual_hash,
+            expected_hash,
+        )
+
+    except (ValueError, TypeError):
+        return False
+
+
+def public_user_dict(row: sqlite3.Row | dict) -> dict:
+    return {
+        "id": row["id"],
+        "name": row["name"],
+        "email": row["email"],
+        "role": row_value(row, "role", default=None),
+        "department": row_value(row, "department", default=None),
+    }
+
 
 def get_level(score: int | float) -> str:
     score = float(score)
@@ -822,7 +898,7 @@ def get_history(
 
 
 # ============================================================
-# ROOT / USERS
+# ROOT / USERS / AUTH
 # ============================================================
 
 @app.get("/")
@@ -830,14 +906,142 @@ def root():
     return {"message": "Welcome to StatMentor AI"}
 
 
+@app.post("/auth/register")
+def register_user(data: UserRegister):
+    connection = get_connection()
+    cursor = connection.cursor()
+
+    try:
+        name = data.name.strip()
+        email = data.email.strip().lower()
+        role = (data.role or "Employee").strip() or "Employee"
+        department = (data.department or "General").strip() or "General"
+
+        if not name:
+            raise HTTPException(
+                status_code=400,
+                detail="Name is required.",
+            )
+
+        if not email or "@" not in email:
+            raise HTTPException(
+                status_code=400,
+                detail="Enter a valid email address.",
+            )
+
+        existing_user = cursor.execute(
+            """
+            SELECT id
+            FROM users
+            WHERE LOWER(email) = LOWER(?)
+            """,
+            (email,),
+        ).fetchone()
+
+        if existing_user:
+            raise HTTPException(
+                status_code=400,
+                detail="An account already exists with this email.",
+            )
+
+        password_hash = hash_password(data.password)
+
+        cursor.execute(
+            """
+            INSERT INTO users (
+                name,
+                email,
+                role,
+                department,
+                password_hash
+            )
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                name,
+                email,
+                role,
+                department,
+                password_hash,
+            ),
+        )
+
+        user_id = cursor.lastrowid
+        connection.commit()
+
+        user = cursor.execute(
+            """
+            SELECT id, name, email, role, department
+            FROM users
+            WHERE id = ?
+            """,
+            (user_id,),
+        ).fetchone()
+
+        return {
+            "message": "Account created successfully.",
+            "user": public_user_dict(user),
+        }
+
+    except sqlite3.IntegrityError:
+        raise HTTPException(
+            status_code=400,
+            detail="An account already exists with this email.",
+        )
+
+    finally:
+        connection.close()
+
+
+@app.post("/auth/login")
+def login_user(data: UserLogin):
+    connection = get_connection()
+
+    try:
+        email = data.email.strip().lower()
+
+        user = connection.execute(
+            """
+            SELECT *
+            FROM users
+            WHERE LOWER(email) = LOWER(?)
+            """,
+            (email,),
+        ).fetchone()
+
+        if not user or not verify_password(
+            data.password,
+            row_value(user, "password_hash", default=None),
+        ):
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid email or password.",
+            )
+
+        return {
+            "message": "Login successful.",
+            "user": public_user_dict(user),
+        }
+
+    finally:
+        connection.close()
+
+
 @app.get("/users")
 def list_users():
     connection = get_connection()
+
     try:
         rows = connection.execute(
-            "SELECT * FROM users ORDER BY id"
+            """
+            SELECT id, name, email, role, department, created_at
+            FROM users
+            ORDER BY id
+            """
         ).fetchall()
+
         return [dict(row) for row in rows]
+
     finally:
         connection.close()
 
@@ -853,7 +1057,12 @@ def create_user(data: UserCreate):
             INSERT INTO users (name, email, role, department)
             VALUES (?, ?, ?, ?)
             """,
-            (data.name, data.email, data.role, data.department),
+            (
+                data.name.strip(),
+                data.email.strip().lower(),
+                data.role,
+                data.department,
+            ),
         )
         connection.commit()
 
@@ -867,6 +1076,7 @@ def create_user(data: UserCreate):
             status_code=400,
             detail=f"Could not create user: {exc}",
         )
+
     finally:
         connection.close()
 
@@ -874,16 +1084,25 @@ def create_user(data: UserCreate):
 @app.get("/users/{user_id}")
 def get_user(user_id: int):
     connection = get_connection()
+
     try:
         row = connection.execute(
-            "SELECT * FROM users WHERE id = ?",
+            """
+            SELECT id, name, email, role, department, created_at
+            FROM users
+            WHERE id = ?
+            """,
             (user_id,),
         ).fetchone()
 
         if not row:
-            raise HTTPException(status_code=404, detail="User not found.")
+            raise HTTPException(
+                status_code=404,
+                detail="User not found.",
+            )
 
         return dict(row)
+
     finally:
         connection.close()
 
