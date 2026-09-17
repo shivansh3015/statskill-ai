@@ -23,7 +23,7 @@ from ai.adaptive_engine import get_next_question_strategy
 
 BACKEND_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = BACKEND_DIR.parent
-DATABASE_PATH = PROJECT_ROOT / "database" / "statmentor.db"
+DATABASE_PATH = BACKEND_DIR / "statmentor.db"
 UPLOAD_DIR = BACKEND_DIR / "uploads"
 
 DATABASE_PATH.parent.mkdir(parents=True, exist_ok=True)
