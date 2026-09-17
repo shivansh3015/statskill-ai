@@ -171,10 +171,10 @@ export default function RecentActivityFeed() {
                   iconBg: 'bg-blue-900/40',
 
                   title:
-                    `AI Assessment — ${history.skill_name}`,
+                    `AI Assessment \u2014 ${history.skill_name}`,
 
                   detail:
-                    `Score: ${history.new_score}/100 — ${history.new_level}`,
+                    `Score: ${history.new_score}/100 \u2014 ${history.new_level}`,
 
                   date:
                     history.created_at,
@@ -200,7 +200,7 @@ export default function RecentActivityFeed() {
                     `Competency improved: ${history.skill_name}`,
 
                   detail:
-                    `${history.previous_score} â†’ ${history.new_score} (+${history.improvement} pts)`,
+                    `${history.previous_score} \u2192 ${history.new_score} (+${history.improvement} pts)`,
 
                   date:
                     history.created_at,
@@ -229,7 +229,7 @@ export default function RecentActivityFeed() {
                   `Competency updated: ${history.skill_name}`,
 
                 detail:
-                  `${history.previous_score} â†’ ${history.new_score}`,
+                  `${history.previous_score} \u2192 ${history.new_score}`,
 
                 date:
                   history.created_at,
@@ -270,10 +270,10 @@ export default function RecentActivityFeed() {
                     'bg-emerald-900/40',
 
                   title:
-                    `Course completed â€” ${course.course_name}`,
+                    `Course completed \u2014 ${course.course_name}`,
 
                   detail:
-                    `${course.category} â€¢ ${course.difficulty}`,
+                    `${course.category} \u2022 ${course.difficulty}`,
 
                   date:
                     course.enrolled_at,
@@ -301,10 +301,10 @@ export default function RecentActivityFeed() {
                   'bg-cyan-900/40',
 
                 title:
-                  `Course in progress â€” ${course.course_name}`,
+                  `Course in progress \u2014 ${course.course_name}`,
 
                 detail:
-                  `${course.progress}% completed â€¢ ${course.difficulty}`,
+                  `${course.progress}% completed \u2022 ${course.difficulty}`,
 
                 date:
                   course.enrolled_at,
