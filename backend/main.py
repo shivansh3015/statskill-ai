@@ -374,6 +374,19 @@ def init_db() -> None:
         "password_hash",
         "TEXT",
     )
+    ensure_column(
+        connection,
+        "users",
+        "created_at",
+        "TEXT",
+    )
+    cursor.execute(
+        """
+        UPDATE users
+        SET created_at = CURRENT_TIMESTAMP
+        WHERE created_at IS NULL OR TRIM(created_at) = ''
+        """
+    )
     ensure_column(connection, "ai_assessment_questions", "answered", "INTEGER DEFAULT 0")
     ensure_column(connection, "ai_assessment_questions", "evaluation_score", "INTEGER")
     ensure_column(connection, "ai_assessment_questions", "evaluation_feedback", "TEXT")
@@ -986,9 +999,10 @@ def register_user(data: UserRegister):
                 email,
                 role,
                 department,
-                password_hash
+                password_hash,
+                created_at
             )
-            VALUES (?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             """,
             (
                 name,
@@ -1087,8 +1101,8 @@ def create_user(data: UserCreate):
     try:
         cursor.execute(
             """
-            INSERT INTO users (name, email, role, department)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO users (name, email, role, department, created_at)
+            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
             """,
             (
                 data.name.strip(),
